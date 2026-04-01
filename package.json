@@ -1,0 +1,52 @@
+{
+  "name": "novabiz-os",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "@prisma/client": "^5.20.0",
+    "@clerk/nextjs": "^5.7.0",
+    "plaid": "^25.0.0",
+    "next": "14.2.16",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "date-fns": "^3.6.0",
+    "decimal.js": "^10.4.3",
+    "recharts": "^2.13.0",
+    "lucide-react": "^0.439.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.5.4",
+    "zod": "^3.23.8",
+    "axios": "^1.7.7",
+    "bullmq": "^5.13.0",
+    "ioredis": "^5.4.1",
+    "resend": "^3.5.0",
+    "stripe": "^16.12.0",
+    "@tanstack/react-query": "^5.56.2",
+    "zustand": "^4.5.5",
+    "framer-motion": "^11.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.9",
+    "@types/react": "^18.3.8",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.6.2",
+    "tailwindcss": "^3.4.12",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "prisma": "^5.20.0",
+    "tsx": "^4.19.1",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.16"
+  }
+}

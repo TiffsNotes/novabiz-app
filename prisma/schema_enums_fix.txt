@@ -1,0 +1,107 @@
+enum Plan {
+  TRIAL
+  CORE
+  PRO
+  ENTERPRISE
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  ACCOUNTANT
+  VIEWER
+  MEMBER
+  HR_MANAGER
+  SALES_REP
+  PROJECT_MANAGER
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIAL
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum POStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum SOStatus {
+  DRAFT
+  CONFIRMED
+  PICKING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  MEETING
+  NOTE
+  TASK
+}
+
+enum EmployeeType {
+  FULL_TIME
+  PART_TIME
+  CONTRACTOR
+  INTERN
+}
+
+enum ModuleType {
+  AUTOBOOKS
+  PAYROLL
+  GROWTH
+  SALES
+  SUPPLY_CHAIN
+  CASH_ORACLE
+  COMPLIANCE
+  OPS_SCHEDULER
+  COMMAND_INBOX
+  CRM
+  HR
+  ECOMMERCE
+  PSA
+  BI
+}
+
+enum ActionStatus {
+  PENDING
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  EXECUTING
+  COMPLETED
+  FAILED
+}
+
+enum Urgency {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}

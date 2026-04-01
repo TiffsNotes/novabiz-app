@@ -1,0 +1,1490 @@
+// NovaBiz OS — Complete Database Schema v2
+// Covers all 8 pillars: Finance/GL, ERP, CRM, HR, eCommerce, PSA, BI, Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ── CORE ────────────────────────────────────────────────────
+
+model Business {
+  id               String   @id @default(cuid())
+  clerkOrgId       String   @unique
+  name             String
+  legalName        String?
+  industry         String?
+  plan             Plan     @default(TRIAL)
+  subStatus        String   @default("active")
+  stripeCustomerId String?
+  stripeSubId      String?
+  annualRevenue    Int?
+  employeeCount    Int?
+  fiscalYearStart  Int      @default(1)
+  timezone         String   @default("America/New_York")
+  baseCurrency     String   @default("USD")
+  taxId            String?
+  address          Json?
+  thresholds       Json     @default("{\"transaction\":50000,\"vendor_new\":100000,\"payroll\":0,\"po\":200000}")
+  enabledModules   String[] @default(["AUTOBOOKS","CASH_ORACLE","COMMAND_INBOX"])
+  onboardingStep   Int      @default(0)
+  onboardingComplete Boolean @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  users              BusinessUser[]
+  bankAccounts       BankAccount[]
+  transactions       Transaction[]
+  journalEntries     JournalEntry[]
+  ledgerAccounts     LedgerAccount[]
+  currencies         BusinessCurrency[]
+  fxRates            FxRate[]
+  budgets            Budget[]
+  invoices           Invoice[]
+  bills              Bill[]
+  payments           Payment[]
+  taxRates           TaxRate[]
+  taxFilings         TaxFiling[]
+  products           Product[]
+  warehouses         Warehouse[]
+  inventoryItems     InventoryItem[]
+  inventoryMovements InventoryMovement[]
+  purchaseOrders     PurchaseOrder[]
+  salesOrders        SalesOrder[]
+  vendors            Vendor[]
+  contacts           Contact[]
+  companies          Company[]
+  deals              Deal[]
+  activities         Activity[]
+  pipelines          Pipeline[]
+  supportTickets     SupportTicket[]
+  emailThreads       EmailThread[]
+  employees          Employee[]
+  departments        Department[]
+  payrollRuns        PayrollRun[]
+  leaveRequests      LeaveRequest[]
+  performanceReviews PerformanceReview[]
+  benefitPlans       BenefitPlan[]
+  storefronts        Storefront[]
+  ecomOrders         EcomOrder[]
+  customers          Customer[]
+  projects           Project[]
+  timesheets         Timesheet[]
+  expenses           Expense[]
+  aiActions          AiAction[]
+  inboxItems         InboxItem[]
+  savingsEntries     SavingsEntry[]
+  cashForecasts      CashForecast[]
+  reports            Report[]
+  dashboards         CustomDashboard[]
+  integrations       Integration[]
+  workflows          Workflow[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  categories         Category[]
+
+  @@map("businesses")
+}
+
+model BusinessUser {
+  id          String    @id @default(cuid())
+  businessId  String
+  clerkUserId String
+  role        UserRole  @default(MEMBER)
+  email       String
+  name        String?
+  title       String?
+  department  String?
+  permissions Json      @default("{}")
+  lastActive  DateTime?
+  createdAt   DateTime  @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, clerkUserId])
+  @@map("business_users")
+}
+
+// ── FINANCE / GL ────────────────────────────────────────────
+
+model LedgerAccount {
+  id          String      @id @default(cuid())
+  businessId  String
+  code        String
+  name        String
+  type        AccountType
+  subtype     String?
+  parentId    String?
+  currency    String      @default("USD")
+  isSystem    Boolean     @default(false)
+  isActive    Boolean     @default(true)
+  description String?
+  balance     Int         @default(0)
+  createdAt   DateTime    @default(now())
+
+  business    Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  parent      LedgerAccount?  @relation("AcctHierarchy", fields: [parentId], references: [id])
+  children    LedgerAccount[] @relation("AcctHierarchy")
+  debitLines  JournalLine[]   @relation("DebitAcct")
+  creditLines JournalLine[]   @relation("CreditAcct")
+
+  @@unique([businessId, code])
+  @@map("ledger_accounts")
+}
+
+model JournalEntry {
+  id          String   @id @default(cuid())
+  businessId  String
+  number      String
+  date        DateTime
+  description String
+  reference   String?
+  status      String   @default("posted")
+  currency    String   @default("USD")
+  exchangeRate Float   @default(1.0)
+  sourceType  String?
+  sourceId    String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  business Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  lines    JournalLine[]
+
+  @@index([businessId, date])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id              String  @id @default(cuid())
+  journalEntryId  String
+  debitAccountId  String?
+  creditAccountId String?
+  amount          Int
+  description     String?
+  amountBase      Int
+
+  entry         JournalEntry   @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  debitAccount  LedgerAccount? @relation("DebitAcct",  fields: [debitAccountId],  references: [id])
+  creditAccount LedgerAccount? @relation("CreditAcct", fields: [creditAccountId], references: [id])
+
+  @@map("journal_lines")
+}
+
+model BusinessCurrency {
+  id         String  @id @default(cuid())
+  businessId String
+  code       String
+  name       String
+  symbol     String
+  isBase     Boolean @default(false)
+  isActive   Boolean @default(true)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, code])
+  @@map("business_currencies")
+}
+
+model FxRate {
+  id           String   @id @default(cuid())
+  businessId   String
+  fromCurrency String
+  toCurrency   String
+  rate         Float
+  date         DateTime @default(now())
+  source       String   @default("manual")
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("fx_rates")
+}
+
+model Budget {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  period     String
+  currency   String   @default("USD")
+  lines      Json
+  status     String   @default("draft")
+  approvedBy String?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("budgets")
+}
+
+model BankAccount {
+  id               String   @id @default(cuid())
+  businessId       String
+  plaidAccountId   String?  @unique
+  plaidItemId      String?
+  plaidAccessToken String?
+  name             String
+  mask             String?
+  type             String
+  subtype          String?
+  currency         String   @default("USD")
+  currentBalance   Int?
+  availableBalance Int?
+  institution      String?
+  lastSync         DateTime?
+  syncStatus       String   @default("active")
+  syncError        String?
+  createdAt        DateTime @default(now())
+
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@map("bank_accounts")
+}
+
+model Transaction {
+  id                 String   @id @default(cuid())
+  businessId         String
+  bankAccountId      String?
+  plaidTxId          String?  @unique
+  date               DateTime
+  amount             Int
+  description        String
+  merchantName       String?
+  currency           String   @default("USD")
+  categoryId         String?
+  categoryRaw        String[]
+  categoryConfidence Float?
+  categorySource     String?
+  categoryReasoning  String?
+  pending            Boolean  @default(false)
+  reviewed           Boolean  @default(false)
+  excluded           Boolean  @default(false)
+  reconciled         Boolean  @default(false)
+  notes              String?
+  receiptUrl         String?
+  vendorId           String?
+  tags               String[]
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id])
+  category    Category?    @relation(fields: [categoryId], references: [id])
+  vendor      Vendor?      @relation(fields: [vendorId], references: [id])
+
+  @@index([businessId, date])
+  @@map("transactions")
+}
+
+model Category {
+  id         String       @id @default(cuid())
+  businessId String
+  name       String
+  type       CategoryType
+  parentId   String?
+  coaCode    String?
+  taxCategory String?
+  color      String?
+  isSystem   Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  parent       Category?     @relation("CatHierarchy", fields: [parentId], references: [id])
+  children     Category[]    @relation("CatHierarchy")
+
+  @@unique([businessId, name])
+  @@map("categories")
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  businessId    String
+  contactId     String?
+  companyId     String?
+  number        String
+  status        InvoiceStatus @default(DRAFT)
+  currency      String        @default("USD")
+  exchangeRate  Float         @default(1.0)
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime?
+  paidAt        DateTime?
+  subtotal      Int
+  taxAmount     Int           @default(0)
+  total         Int
+  amountPaid    Int           @default(0)
+  amountDue     Int
+  notes         String?
+  lineItems     Json
+  taxBreakdown  Json?
+  pdfUrl        String?
+  sentAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  business  Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contact   Contact?  @relation(fields: [contactId], references: [id])
+  company   Company?  @relation(fields: [companyId], references: [id])
+  payments  Payment[]
+
+  @@index([businessId, status])
+  @@map("invoices")
+}
+
+model Bill {
+  id          String   @id @default(cuid())
+  businessId  String
+  vendorId    String?
+  number      String
+  vendorRef   String?
+  status      String   @default("draft")
+  currency    String   @default("USD")
+  billDate    DateTime
+  dueDate     DateTime?
+  paidAt      DateTime?
+  subtotal    Int
+  taxAmount   Int      @default(0)
+  total       Int
+  amountPaid  Int      @default(0)
+  lineItems   Json
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  business  Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  vendor    Vendor?   @relation(fields: [vendorId], references: [id])
+  payments  Payment[]
+
+  @@map("bills")
+}
+
+model Payment {
+  id         String   @id @default(cuid())
+  businessId String
+  invoiceId  String?
+  billId     String?
+  date       DateTime
+  amount     Int
+  currency   String   @default("USD")
+  method     String
+  reference  String?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice  Invoice?  @relation(fields: [invoiceId], references: [id])
+  bill     Bill?     @relation(fields: [billId], references: [id])
+
+  @@map("payments")
+}
+
+model TaxRate {
+  id           String  @id @default(cuid())
+  businessId   String
+  name         String
+  code         String
+  rate         Float
+  type         String
+  jurisdiction String?
+  isActive     Boolean @default(true)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, code])
+  @@map("tax_rates")
+}
+
+model TaxFiling {
+  id          String   @id @default(cuid())
+  businessId  String
+  type        String
+  period      String
+  dueDate     DateTime
+  filedAt     DateTime?
+  amount      Int?
+  status      String   @default("upcoming")
+  formUrl     String?
+  notes       String?
+  aiGenerated Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("tax_filings")
+}
+
+// ── ERP ─────────────────────────────────────────────────────
+
+model Vendor {
+  id              String  @id @default(cuid())
+  businessId      String
+  name            String
+  normalizedName  String
+  contactName     String?
+  email           String?
+  phone           String?
+  website         String?
+  address         Json?
+  currency        String  @default("USD")
+  paymentTerms    String?
+  taxId           String?
+  category        String?
+  rating          Int?
+  avgMonthlySpend Int?
+  isRecurring     Boolean @default(false)
+  isActive        Boolean @default(true)
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+  purchaseOrders PurchaseOrder[]
+  bills          Bill[]
+
+  @@unique([businessId, normalizedName])
+  @@map("vendors")
+}
+
+model Product {
+  id           String  @id @default(cuid())
+  businessId   String
+  sku          String
+  name         String
+  description  String?
+  type         String  @default("physical")
+  category     String?
+  brand        String?
+  unitCost     Int
+  sellingPrice Int
+  currency     String  @default("USD")
+  weight       Float?
+  dimensions   Json?
+  imageUrl     String?
+  barcode      String?
+  taxable      Boolean @default(true)
+  isActive     Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  business       Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  inventoryItems InventoryItem[]
+  soLines        SalesOrderLine[]
+  poLines        PurchaseOrderLine[]
+  ecomLines      EcomOrderLine[]
+
+  @@unique([businessId, sku])
+  @@map("products")
+}
+
+model Warehouse {
+  id         String  @id @default(cuid())
+  businessId String
+  name       String
+  code       String
+  address    Json?
+  isDefault  Boolean @default(false)
+  isActive   Boolean @default(true)
+  createdAt  DateTime @default(now())
+
+  business       Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  inventoryItems InventoryItem[]
+  movements      InventoryMovement[]
+
+  @@unique([businessId, code])
+  @@map("warehouses")
+}
+
+model InventoryItem {
+  id            String   @id @default(cuid())
+  businessId    String
+  productId     String
+  warehouseId   String
+  onHand        Int      @default(0)
+  reserved      Int      @default(0)
+  available     Int      @default(0)
+  reorderPoint  Int      @default(10)
+  reorderQty    Int      @default(50)
+  maxStock      Int?
+  binLocation   String?
+  costMethod    String   @default("FIFO")
+  avgCost       Int?
+  lastCountDate DateTime?
+  updatedAt     DateTime @updatedAt
+
+  business    Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  product     Product             @relation(fields: [productId], references: [id])
+  warehouse   Warehouse           @relation(fields: [warehouseId], references: [id])
+  movements   InventoryMovement[]
+  poLines     PurchaseOrderLine[]
+
+  @@unique([productId, warehouseId])
+  @@map("inventory_items")
+}
+
+model InventoryMovement {
+  id          String   @id @default(cuid())
+  businessId  String
+  itemId      String
+  warehouseId String
+  type        String
+  quantity    Int
+  cost        Int?
+  reference   String?
+  notes       String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  business  Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  item      InventoryItem @relation(fields: [itemId], references: [id])
+  warehouse Warehouse     @relation(fields: [warehouseId], references: [id])
+
+  @@map("inventory_movements")
+}
+
+model PurchaseOrder {
+  id            String   @id @default(cuid())
+  businessId    String
+  vendorId      String?
+  number        String
+  status        POStatus @default(DRAFT)
+  currency      String   @default("USD")
+  subtotal      Int
+  taxAmount     Int      @default(0)
+  total         Int
+  notes         String?
+  expectedDate  DateTime?
+  receivedDate  DateTime?
+  autoGenerated Boolean  @default(false)
+  aiReasoning   String?
+  approvedBy    String?
+  approvedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  business Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  vendor   Vendor?            @relation(fields: [vendorId], references: [id])
+  lines    PurchaseOrderLine[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id              String  @id @default(cuid())
+  poId            String
+  productId       String?
+  inventoryItemId String?
+  description     String
+  quantity        Int
+  unitCost        Int
+  total           Int
+  receivedQty     Int     @default(0)
+
+  po            PurchaseOrder  @relation(fields: [poId], references: [id], onDelete: Cascade)
+  product       Product?       @relation(fields: [productId], references: [id])
+  inventoryItem InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+
+  @@map("purchase_order_lines")
+}
+
+model SalesOrder {
+  id              String   @id @default(cuid())
+  businessId      String
+  contactId       String?
+  companyId       String?
+  number          String
+  status          SOStatus @default(DRAFT)
+  currency        String   @default("USD")
+  subtotal        Int
+  taxAmount       Int      @default(0)
+  total           Int
+  shippingCost    Int      @default(0)
+  shippingAddress Json?
+  notes           String?
+  shipDate        DateTime?
+  deliveryDate    DateTime?
+  createdAt       DateTime @default(now())
+
+  business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contact  Contact?        @relation(fields: [contactId], references: [id])
+  company  Company?        @relation(fields: [companyId], references: [id])
+  lines    SalesOrderLine[]
+
+  @@map("sales_orders")
+}
+
+model SalesOrderLine {
+  id           String  @id @default(cuid())
+  orderId      String
+  productId    String?
+  description  String
+  quantity     Int
+  unitPrice    Int
+  discount     Float   @default(0)
+  total        Int
+  fulfilledQty Int     @default(0)
+
+  order   SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product?   @relation(fields: [productId], references: [id])
+
+  @@map("sales_order_lines")
+}
+
+// ── CRM ──────────────────────────────────────────────────────
+
+model Contact {
+  id           String   @id @default(cuid())
+  businessId   String
+  companyId    String?
+  firstName    String
+  lastName     String?
+  email        String?
+  phone        String?
+  title        String?
+  source       String?
+  stage        String   @default("lead")
+  score        Int?
+  tags         String[]
+  customFields Json?
+  lastContact  DateTime?
+  notes        String?
+  ownerId      String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  business    Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  company     Company?        @relation(fields: [companyId], references: [id])
+  deals       Deal[]
+  activities  Activity[]
+  invoices    Invoice[]
+  salesOrders SalesOrder[]
+  tickets     SupportTicket[]
+  emails      EmailThread[]
+
+  @@index([businessId, email])
+  @@map("contacts")
+}
+
+model Company {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  domain     String?
+  industry   String?
+  size       String?
+  revenue    Int?
+  phone      String?
+  address    Json?
+  website    String?
+  tags       String[]
+  notes      String?
+  ownerId    String?
+  createdAt  DateTime @default(now())
+
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contacts    Contact[]
+  deals       Deal[]
+  invoices    Invoice[]
+  salesOrders SalesOrder[]
+
+  @@map("companies")
+}
+
+model Pipeline {
+  id         String  @id @default(cuid())
+  businessId String
+  name       String
+  stages     Json
+  currency   String  @default("USD")
+  isDefault  Boolean @default(false)
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  deals    Deal[]
+
+  @@map("pipelines")
+}
+
+model Deal {
+  id            String   @id @default(cuid())
+  businessId    String
+  pipelineId    String?
+  contactId     String?
+  companyId     String?
+  name          String
+  value         Int?
+  currency      String   @default("USD")
+  stage         String   @default("prospect")
+  probability   Int      @default(20)
+  expectedClose DateTime?
+  closedAt      DateTime?
+  wonLost       String?
+  lostReason    String?
+  source        String?
+  ownerId       String?
+  notes         String?
+  aiScore       Int?
+  aiInsights    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  pipeline   Pipeline?  @relation(fields: [pipelineId], references: [id])
+  contact    Contact?   @relation(fields: [contactId], references: [id])
+  company    Company?   @relation(fields: [companyId], references: [id])
+  activities Activity[]
+
+  @@map("deals")
+}
+
+model Activity {
+  id          String       @id @default(cuid())
+  businessId  String
+  contactId   String?
+  dealId      String?
+  type        ActivityType
+  title       String
+  description String?
+  scheduledAt DateTime?
+  completedAt DateTime?
+  outcome     String?
+  duration    Int?
+  createdBy   String?
+  aiGenerated Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contact  Contact?  @relation(fields: [contactId], references: [id])
+  deal     Deal?     @relation(fields: [dealId], references: [id])
+
+  @@map("activities")
+}
+
+model EmailThread {
+  id          String   @id @default(cuid())
+  businessId  String
+  contactId   String?
+  subject     String
+  threadId    String?
+  messages    Json
+  lastMessage DateTime
+  aiSummary   String?
+  aiNextStep  String?
+  createdAt   DateTime @default(now())
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contact  Contact?  @relation(fields: [contactId], references: [id])
+
+  @@map("email_threads")
+}
+
+model SupportTicket {
+  id           String   @id @default(cuid())
+  businessId   String
+  contactId    String?
+  number       String
+  subject      String
+  description  String
+  status       String   @default("open")
+  priority     String   @default("normal")
+  category     String?
+  assignedTo   String?
+  resolvedAt   DateTime?
+  satisfaction Int?
+  messages     Json     @default("[]")
+  aiSuggestion String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contact  Contact?  @relation(fields: [contactId], references: [id])
+
+  @@map("support_tickets")
+}
+
+// ── HR ───────────────────────────────────────────────────────
+
+model Department {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  managerId  String?
+  budget     Int?
+  headcount  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employees Employee[]
+
+  @@map("departments")
+}
+
+model Employee {
+  id             String       @id @default(cuid())
+  businessId     String
+  departmentId   String?
+  gustoId        String?      @unique
+  employeeNumber String?
+  firstName      String
+  lastName       String
+  email          String
+  phone          String?
+  type           EmployeeType @default(FULL_TIME)
+  status         String       @default("active")
+  startDate      DateTime?
+  endDate        DateTime?
+  title          String?
+  managerId      String?
+  payRate        Int
+  payType        String
+  paySchedule    String       @default("biweekly")
+  taxWithholding Json?
+  benefits       Json?
+  pto            Json?
+  address        Json?
+  emergencyContact Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  business        Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  department      Department?          @relation(fields: [departmentId], references: [id])
+  payrollEntries  PayrollRunEmployee[]
+  leaveRequests   LeaveRequest[]
+  reviewsAsSubject PerformanceReview[] @relation("ReviewSubject")
+  reviewsGiven    PerformanceReview[]  @relation("Reviewer")
+  timesheets      Timesheet[]
+  expenses        Expense[]
+
+  @@map("employees")
+}
+
+model PayrollRun {
+  id             String   @id @default(cuid())
+  businessId     String
+  gustoPayrollId String?  @unique
+  runNumber      String
+  payPeriodStart DateTime
+  payPeriodEnd   DateTime
+  payDate        DateTime
+  totalGross     Int
+  totalNet       Int
+  totalTaxes     Int
+  totalDeductions Int
+  status         String   @default("pending")
+  approvedBy     String?
+  approvedAt     DateTime?
+  processedAt    DateTime?
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  business   Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employees  PayrollRunEmployee[]
+
+  @@map("payroll_runs")
+}
+
+model PayrollRunEmployee {
+  id             String  @id @default(cuid())
+  payrollRunId   String
+  employeeId     String
+  grossPay       Int
+  netPay         Int
+  federalTax     Int
+  stateTax       Int
+  fica           Int
+  deductions     Int
+  reimbursements Int     @default(0)
+  hours          Float?
+  overtimeHours  Float?
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id])
+  employee   Employee   @relation(fields: [employeeId], references: [id])
+
+  @@map("payroll_run_employees")
+}
+
+model LeaveRequest {
+  id         String   @id @default(cuid())
+  businessId String
+  employeeId String
+  type       String
+  startDate  DateTime
+  endDate    DateTime
+  days       Float
+  reason     String?
+  status     String   @default("pending")
+  approvedBy String?
+  approvedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employee Employee  @relation(fields: [employeeId], references: [id])
+
+  @@map("leave_requests")
+}
+
+model PerformanceReview {
+  id           String   @id @default(cuid())
+  businessId   String
+  subjectId    String
+  reviewerId   String?
+  period       String
+  type         String   @default("annual")
+  status       String   @default("draft")
+  ratings      Json
+  overallScore Float?
+  strengths    String?
+  improvements String?
+  goals        Json?
+  aiSummary    String?
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  subject  Employee  @relation("ReviewSubject", fields: [subjectId], references: [id])
+  reviewer Employee? @relation("Reviewer", fields: [reviewerId], references: [id])
+
+  @@map("performance_reviews")
+}
+
+model BenefitPlan {
+  id                   String  @id @default(cuid())
+  businessId           String
+  name                 String
+  type                 String
+  provider             String?
+  employerContribution Int?
+  employeeContribution Int?
+  isActive             Boolean @default(true)
+  details              Json?
+  createdAt            DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("benefit_plans")
+}
+
+// ── eCOMMERCE ────────────────────────────────────────────────
+
+model Storefront {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  platform   String
+  url        String?
+  currency   String   @default("USD")
+  isActive   Boolean  @default(true)
+  credentials Json?
+  settings   Json?
+  lastSync   DateTime?
+  createdAt  DateTime @default(now())
+
+  business Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  orders   EcomOrder[]
+
+  @@map("storefronts")
+}
+
+model Customer {
+  id          String   @id @default(cuid())
+  businessId  String
+  externalId  String?
+  firstName   String?
+  lastName    String?
+  email       String?
+  phone       String?
+  address     Json?
+  tags        String[]
+  totalOrders Int      @default(0)
+  totalSpent  Int      @default(0)
+  ltv         Int?
+  segment     String?
+  createdAt   DateTime @default(now())
+
+  business Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  orders   EcomOrder[]
+
+  @@map("customers")
+}
+
+model EcomOrder {
+  id              String   @id @default(cuid())
+  businessId      String
+  storefrontId    String
+  customerId      String?
+  externalId      String?
+  number          String
+  status          String   @default("pending")
+  paymentStatus   String   @default("unpaid")
+  fulfillStatus   String   @default("unfulfilled")
+  currency        String   @default("USD")
+  subtotal        Int
+  taxAmount       Int      @default(0)
+  shippingCost    Int      @default(0)
+  total           Int
+  refundAmount    Int      @default(0)
+  channel         String   @default("online")
+  shippingAddress Json?
+  lineItems       Json
+  trackingNumber  String?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  cancelledAt     DateTime?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  business   Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  storefront Storefront    @relation(fields: [storefrontId], references: [id])
+  customer   Customer?     @relation(fields: [customerId], references: [id])
+  lines      EcomOrderLine[]
+
+  @@index([businessId, createdAt])
+  @@map("ecom_orders")
+}
+
+model EcomOrderLine {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String?
+  name      String
+  sku       String?
+  quantity  Int
+  unitPrice Int
+  total     Int
+  discount  Float   @default(0)
+
+  order   EcomOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product?  @relation(fields: [productId], references: [id])
+
+  @@map("ecom_order_lines")
+}
+
+// ── PSA ──────────────────────────────────────────────────────
+
+model Project {
+  id          String   @id @default(cuid())
+  businessId  String
+  name        String
+  code        String?
+  clientId    String?
+  status      String   @default("planning")
+  type        String   @default("fixed")
+  budget      Int?
+  actualCost  Int      @default(0)
+  billingRate Int?
+  currency    String   @default("USD")
+  startDate   DateTime?
+  dueDate     DateTime?
+  completedAt DateTime?
+  description String?
+  managerId   String?
+  teamMembers String[]
+  tags        String[]
+  progress    Int      @default(0)
+  health      String   @default("green")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business   Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  tasks      Task[]
+  timesheets Timesheet[]
+  expenses   Expense[]
+  milestones Milestone[]
+
+  @@map("projects")
+}
+
+model Task {
+  id             String   @id @default(cuid())
+  projectId      String
+  parentId       String?
+  title          String
+  description    String?
+  status         String   @default("todo")
+  priority       String   @default("medium")
+  assigneeId     String?
+  estimatedHours Float?
+  actualHours    Float    @default(0)
+  dueDate        DateTime?
+  completedAt    DateTime?
+  order          Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent     Task?       @relation("TaskTree", fields: [parentId], references: [id])
+  children   Task[]      @relation("TaskTree")
+  timesheets Timesheet[]
+
+  @@map("tasks")
+}
+
+model Milestone {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  dueDate     DateTime
+  completedAt DateTime?
+  description String?
+  billable    Boolean  @default(false)
+  amount      Int?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("milestones")
+}
+
+model Timesheet {
+  id          String   @id @default(cuid())
+  businessId  String
+  employeeId  String?
+  projectId   String?
+  taskId      String?
+  date        DateTime
+  hours       Float
+  description String?
+  billable    Boolean  @default(true)
+  billingRate Int?
+  status      String   @default("draft")
+  approvedBy  String?
+  approvedAt  DateTime?
+  invoiced    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employee Employee? @relation(fields: [employeeId], references: [id])
+  project  Project?  @relation(fields: [projectId], references: [id])
+  task     Task?     @relation(fields: [taskId], references: [id])
+
+  @@map("timesheets")
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  businessId  String
+  employeeId  String?
+  projectId   String?
+  date        DateTime
+  amount      Int
+  currency    String   @default("USD")
+  category    String
+  description String
+  receiptUrl  String?
+  billable    Boolean  @default(false)
+  status      String   @default("pending")
+  approvedBy  String?
+  approvedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employee Employee? @relation(fields: [employeeId], references: [id])
+  project  Project?  @relation(fields: [projectId], references: [id])
+
+  @@map("expenses")
+}
+
+// ── AI PLATFORM ──────────────────────────────────────────────
+
+model AiAction {
+  id               String       @id @default(cuid())
+  businessId       String
+  module           ModuleType
+  actionType       String
+  title            String
+  description      String?
+  payload          Json
+  result           Json?
+  status           ActionStatus @default(PENDING)
+  requiresApproval Boolean      @default(false)
+  approvalReason   String?
+  aiReasoning      String?
+  confidence       Float?
+  executedAt       DateTime?
+  approvedBy       String?
+  approvedAt       DateTime?
+  rejectedBy       String?
+  rejectedAt       DateTime?
+  rejectionReason  String?
+  amount           Int?
+  createdAt        DateTime     @default(now())
+
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  inboxItem InboxItem?
+
+  @@index([businessId, status])
+  @@map("ai_actions")
+}
+
+model InboxItem {
+  id          String     @id @default(cuid())
+  businessId  String
+  actionId    String     @unique
+  title       String
+  description String?
+  module      ModuleType
+  urgency     Urgency    @default(NORMAL)
+  amount      Int?
+  dueAt       DateTime?
+  resolvedAt  DateTime?
+  resolution  String?
+  resolvedBy  String?
+  dismissed   Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  action   AiAction  @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, resolvedAt])
+  @@map("inbox_items")
+}
+
+model SavingsEntry {
+  id          String     @id @default(cuid())
+  businessId  String
+  date        DateTime   @default(now())
+  module      ModuleType
+  category    String
+  amount      Int
+  description String
+  evidence    String?
+  recurring   Boolean    @default(false)
+  vendorName  String?
+  createdAt   DateTime   @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("savings_entries")
+}
+
+model CashForecast {
+  id                String   @id @default(cuid())
+  businessId        String
+  generatedAt       DateTime @default(now())
+  forecastDate      DateTime
+  projectedBalance  Int
+  projectedInflows  Int
+  projectedOutflows Int
+  confidenceLow     Int
+  confidenceHigh    Int
+  scenario          String   @default("base")
+  assumptions       Json?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, forecastDate])
+  @@map("cash_forecasts")
+}
+
+model Report {
+  id          String   @id @default(cuid())
+  businessId  String
+  type        String
+  period      String
+  name        String?
+  data        Json
+  config      Json?
+  isScheduled Boolean  @default(false)
+  schedule    String?
+  recipients  String[]
+  generatedAt DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("reports")
+}
+
+model CustomDashboard {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  role       String?
+  widgets    Json
+  isDefault  Boolean  @default(false)
+  createdBy  String?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("custom_dashboards")
+}
+
+model Integration {
+  id         String   @id @default(cuid())
+  businessId String
+  type       String
+  status     String   @default("active")
+  credentials Json
+  metadata   Json?
+  webhookUrl String?
+  lastSync   DateTime?
+  syncError  String?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, type])
+  @@map("integrations")
+}
+
+model Workflow {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  trigger    String
+  conditions Json
+  actions    Json
+  isActive   Boolean  @default(true)
+  runCount   Int      @default(0)
+  lastRun    DateTime?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("workflows")
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  businessId String
+  userId     String?
+  type       String
+  title      String
+  body       String
+  read       Boolean  @default(false)
+  actionUrl  String?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  businessId String
+  userId     String?
+  action     String
+  resource   String
+  resourceId String?
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, createdAt])
+  @@map("audit_logs")
+}
+
+// ── ENUMS ────────────────────────────────────────────────────
+
+enum Plan {
+  TRIAL
+  CORE
+  PRO
+  ENTERPRISE
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  ACCOUNTANT
+  VIEWER
+  MEMBER
+  HR_MANAGER
+  SALES_REP
+  PROJECT_MANAGER
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIAL
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum POStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum SOStatus {
+  DRAFT
+  CONFIRMED
+  PICKING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  MEETING
+  NOTE
+  TASK
+}
+
+enum EmployeeType {
+  FULL_TIME
+  PART_TIME
+  CONTRACTOR
+  INTERN
+}
+
+enum ModuleType {
+  AUTOBOOKS
+  PAYROLL
+  GROWTH
+  SALES
+  SUPPLY_CHAIN
+  CASH_ORACLE
+  COMPLIANCE
+  OPS_SCHEDULER
+  COMMAND_INBOX
+  CRM
+  HR
+  ECOMMERCE
+  PSA
+  BI
+}
+
+enum ActionStatus {
+  PENDING
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  EXECUTING
+  COMPLETED
+  FAILED
+}
+
+enum Urgency {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}

@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: #0a0a0a;
+  --gray: #666;
+  --gray2: #999;
+  --bg: #f8f8f6;
+  --border: rgba(0,0,0,0.07);
+  --green: #00a855;
+  --green-l: #e8f8f0;
+  --green-d: #007a3d;
+  --red: #e03131;
+  --red-l: #fff0f0;
+  --cab: 'Cabinet Grotesk', sans-serif;
+  --sans: 'Outfit', sans-serif;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Cabinet+Grotesk:wght@500;700;800;900&family=Outfit:wght@300;400;500;600&display=swap');
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Number formatting */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #ddd; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #bbb; }
+
+/* Focus */
+*:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
