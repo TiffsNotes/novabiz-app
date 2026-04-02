@@ -89,8 +89,8 @@ export async function POST(req: NextRequest) {
   const agent = new ERPAgent(business.id)
 
   if (action === 'check_reorders') return NextResponse.json({ triggered: await agent.checkReorderPoints() })
-  if (action === 'receive_inventory') return NextResponse.json({ success: true, ...await agent.receiveInventory(data.poId, data.lines) })
-  if (action === 'fulfill_order') return NextResponse.json({ success: true, ...await agent.fulfillOrder(data.orderId) })
+  if (action === 'receive_inventory') return NextResponse.json({ success: true, result: await agent.receiveInventory(data.poId, data.lines) })
+  if (action === 'fulfill_order') return NextResponse.json({ success: true, result: await agent.fulfillOrder(data.orderId) })
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
 }
