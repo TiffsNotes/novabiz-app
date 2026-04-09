@@ -1,66 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { generateForecast } from '@/lib/ai/forecast'
 
 export async function GET(req: NextRequest) {
-  const { orgId, userId } = await auth()
-  const id = orgId || userId
-  if (!id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const business = await db.business.findUnique({ where: { clerkOrgId: id } })
-  if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-  // Try cached forecast first (generated within last 6 hours)
-  const cached = await db.cashForecast.findMany({
-    where: {
-      businessId: business.id,
-      generatedAt: { gte: new Date(Date.now() - 6 * 60 * 60 * 1000) },
-      forecastDate: { gte: new Date() },
-    },
-    orderBy: { forecastDate: 'asc' },
-    take: 90,
-  })
-
-  if (cached.length >= 30) {
-    const accounts = await db.bankAccount.findMany({
-      where: { businessId: business.id },
-      select: { currentBalance: true, type: true },
-    })
-    const currentBalance = accounts.filter(a => a.type !== 'credit').reduce((s, a) => s + (a.currentBalance || 0), 0)
-    const balance30 = cached[29]?.projectedBalance || currentBalance
-    const balance90 = cached[cached.length - 1]?.projectedBalance || currentBalance
-    const runwayPoint = cached.find(p => p.projectedBalance < 0)
-
-    return NextResponse.json({
-      currentBalance,
-      balanceIn30Days: balance30,
-      balanceIn90Days: balance90,
-      runwayDays: runwayPoint ? cached.indexOf(runwayPoint) : null,
-      alertLevel: balance30 < 0 ? 'critical' : balance30 < currentBalance * 0.2 ? 'warning' : 'ok',
-      taxSetAside: Math.max(0, Math.round(currentBalance * 0.1)),
-      points: cached.map(p => ({
-        date: p.forecastDate.toISOString().split('T')[0],
-        balance: p.projectedBalance,
-        inflows: p.projectedInflows,
-        outflows: p.projectedOutflows,
-        confidenceLow: p.confidenceLow,
-        confidenceHigh: p.confidenceHigh,
-      })),
-    })
+  try {
+    const { orgId, userId } = await auth()
+    const id = orgId || userId
+    if (!id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const business = await db.business.findFirst({ where: { clerkOrgId: id } })
+    if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    const accounts = await db.bankAccount.findMany({ where: { businessId: business.id } }).catch(() => [])
+    const currentCash = accounts.reduce((sum: number, a: any) => sum + (a.balance || 0), 0)
+    const now = new Date()
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const [recentIncome, recentExpenses] = await Promise.all([
+      db.transaction.aggregate({ where: { businessId: business.id, type: 'income', date: { gte: thirtyDaysAgo } }, _sum: { amount: true } }).catch(() => ({ _sum: { amount: 0 } })),
+      db.transaction.aggregate({ where: { businessId: business.id, type: 'expense', date: { gte: thirtyDaysAgo } }, _sum: { amount: true } }).catch(() => ({ _sum: { amount: 0 } })),
+    ])
+    const avgDailyIncome = Math.abs((recentIncome._sum.amount as number) || 0) / 30
+    const avgDailyExpenses = Math.abs((recentExpenses._sum.amount as number) || 0) / 30
+    const avgDailyNet = avgDailyIncome - avgDailyExpenses
+    const forecast = []
+    for (let day = 0; day <= 90; day += 7) {
+      const date = new Date(now.getTime() + day * 24 * 60 * 60 * 1000)
+      forecast.push({ date: date.toISOString().split('T')[0], projected: Math.max(0, currentCash + (avgDailyNet * day)) })
+    }
+    const upcomingBills = await db.bill.findMany({ where: { businessId: business.id, status: { in: ['open', 'partial'] }, dueDate: { gte: now, lte: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) } }, orderBy: { dueDate: 'asc' }, take: 10 }).catch(() => [])
+    return NextResponse.json({ currentCash, accounts, forecast30: Math.max(0, currentCash + (avgDailyNet * 30)), forecast60: Math.max(0, currentCash + (avgDailyNet * 60)), forecast90: Math.max(0, currentCash + (avgDailyNet * 90)), avgDailyIncome, avgDailyExpenses, avgDailyNet, forecast, upcomingBills, generatedAt: now.toISOString() })
+  } catch (err: any) {
+    console.error('Forecast API error:', err)
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
-
-  // Generate fresh forecast
-  const forecast = await generateForecast(business.id)
-  return NextResponse.json(forecast)
-}
-
-export async function POST(req: NextRequest) {
-  const { orgId, userId } = await auth()
-  const id = orgId || userId
-  if (!id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const business = await db.business.findUnique({ where: { clerkOrgId: id } })
-  if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-  const forecast = await generateForecast(business.id)
-  return NextResponse.json(forecast)
 }
