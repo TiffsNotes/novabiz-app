@@ -49,17 +49,21 @@ export default function DashboardPage() {
 
   const load = async () => {
     setRefreshing(true)
-    const [dashRes, briefRes, intelRes] = await Promise.all([
-      fetch('/api/dashboard'),
-      fetch('/api/dashboard/brief'),
-      fetch('/api/intelligence?quick=true'),
-    ])
-    if (dashRes.ok) setData(await dashRes.json())
-    if (briefRes.ok) setBrief((await briefRes.json()).brief)
-    if (intelRes.ok) {
-      const intel = await intelRes.json()
-      setIntelligenceAlerts((intel.signals || []).slice(0, 3))
-    }
+    try {
+      const dashRes = await fetch('/api/dashboard')
+      if (dashRes.ok) setData(await dashRes.json())
+    } catch (e) { console.error('Dashboard fetch failed', e) }
+    try {
+      const briefRes = await fetch('/api/dashboard/brief')
+      if (briefRes.ok) setBrief((await briefRes.json()).brief)
+    } catch (e) { console.error('Brief fetch failed', e) }
+    try {
+      const intelRes = await fetch('/api/intelligence?quick=true')
+      if (intelRes.ok) {
+        const intel = await intelRes.json()
+        setIntelligenceAlerts((intel.signals || []).slice(0, 3))
+      }
+    } catch (e) { console.error('Intel fetch failed', e) }
     setLoading(false)
     setRefreshing(false)
   }
