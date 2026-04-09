@@ -4,9 +4,10 @@ import { db } from '@/lib/db'
 import { startOfMonth } from 'date-fns'
 
 export async function GET(req: NextRequest) {
-  const { orgId } = await auth()
-  if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const business = await db.business.findUnique({ where: { clerkOrgId: orgId } })
+  const { orgId, userId } = await auth()
+  const id = orgId || userId
+  if (!id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const business = await db.business.findUnique({ where: { clerkOrgId: id } })
   if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const view = new URL(req.url).searchParams.get('view') || 'projects'

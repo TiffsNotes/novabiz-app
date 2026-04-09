@@ -4,9 +4,10 @@ import { db } from '@/lib/db'
 import { generateForecast } from '@/lib/ai/forecast'
 
 export async function GET(req: NextRequest) {
-  const { orgId } = await auth()
-  if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const business = await db.business.findUnique({ where: { clerkOrgId: orgId } })
+  const { orgId, userId } = await auth()
+  const id = orgId || userId
+  if (!id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const business = await db.business.findUnique({ where: { clerkOrgId: id } })
   if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Try cached forecast first (generated within last 6 hours)
@@ -54,9 +55,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { orgId } = await auth()
-  if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const business = await db.business.findUnique({ where: { clerkOrgId: orgId } })
+  const { orgId, userId } = await auth()
+  const id = orgId || userId
+  if (!id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const business = await db.business.findUnique({ where: { clerkOrgId: id } })
   if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const forecast = await generateForecast(business.id)

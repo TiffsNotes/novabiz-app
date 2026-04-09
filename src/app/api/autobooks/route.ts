@@ -5,10 +5,11 @@ import { AutoBooksAgent } from '@/lib/ai/autobooks'
 
 // GET /api/autobooks?view=transactions|pl|run
 export async function GET(req: NextRequest) {
-  const { orgId } = await auth()
-  if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { orgId, userId } = await auth()
+  const id = orgId || userId
+  if (!id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const business = await db.business.findUnique({ where: { clerkOrgId: orgId } })
+  const business = await db.business.findUnique({ where: { clerkOrgId: id } })
   if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const { searchParams } = new URL(req.url)
@@ -116,10 +117,11 @@ export async function GET(req: NextRequest) {
 
 // POST /api/autobooks - trigger AI categorization run
 export async function POST(req: NextRequest) {
-  const { orgId } = await auth()
-  if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { orgId, userId } = await auth()
+  const id = orgId || userId
+  if (!id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const business = await db.business.findUnique({ where: { clerkOrgId: orgId } })
+  const business = await db.business.findUnique({ where: { clerkOrgId: id } })
   if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const agent = new AutoBooksAgent(business.id)

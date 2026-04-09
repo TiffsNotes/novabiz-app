@@ -4,9 +4,10 @@ import { db } from '@/lib/db'
 import { PayrollAIAgent } from '@/lib/integrations/gusto'
 
 export async function GET(req: NextRequest) {
-  const { orgId } = await auth()
-  if (!orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const business = await db.business.findUnique({ where: { clerkOrgId: orgId } })
+  const { orgId, userId } = await auth()
+  const id = orgId || userId
+  if (!id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const business = await db.business.findUnique({ where: { clerkOrgId: id } })
   if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const runs = await db.payrollRun.findMany({
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const { userId, orgId } = await auth()
   if (!userId || !orgId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const business = await db.business.findUnique({ where: { clerkOrgId: orgId } })
+  const business = await db.business.findUnique({ where: { clerkOrgId: id } })
   if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const { action, payrollRunId } = await req.json()
