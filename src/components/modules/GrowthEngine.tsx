@@ -6,7 +6,7 @@ import { PageHeader, Card, StatCard, Badge, Table, Tabs, Button, Modal, Input, S
 type Campaign = { id: string; name: string; type: string; status: string; platforms: string[]; scheduledAt?: string; sentAt?: string; metrics?: Record<string, number>; aiGenerated: boolean }
 type MarketingStats = { campaignsSent30Days: number; scheduledPosts: number; draftCampaigns: number }
 
-const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+const fmtDate = (d?: string) => { try { return d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' } catch { return '—' } }
 
 const PLATFORM_ICONS: Record<string, string> = {
   email: '📧', instagram: '📸', facebook: '📘', twitter: '🐦', linkedin: '💼',

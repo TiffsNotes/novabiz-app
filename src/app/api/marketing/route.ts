@@ -22,8 +22,12 @@ export async function GET(req: NextRequest) {
   }
 
   if (view === 'stats') {
-    const engine = new GrowthEngine(business.id)
-    return NextResponse.json(await engine.getMarketingSummary())
+    try {
+      const engine = new GrowthEngine(business.id)
+      return NextResponse.json(await engine.getMarketingSummary())
+    } catch (e) {
+      return NextResponse.json({ campaignsSent30Days: 0, scheduledPosts: 0, draftCampaigns: 0 })
+    }
   }
 
   return NextResponse.json({ error: 'Invalid view' }, { status: 400 })
