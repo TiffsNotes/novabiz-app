@@ -14,7 +14,7 @@ export async function GET() {
       const staleDeals = await db.deal.findMany({
         where: {
           businessId: business.id,
-          status: 'open',
+          wonLost: null,
           updatedAt: { lt: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
         },
         include: { contact: true },
@@ -26,41 +26,23 @@ export async function GET() {
           data: {
             businessId: business.id,
             type: 'follow_up',
-            title: 'Deal needs follow-up: ' + deal.title,
-            description: 'No activity in 7+ days. Contact: ' + (deal.contact?.displayName || 'Unknown') + '. Value: $' + ((deal.value || 0) / 100).toFixed(0),
+            title: 'Deal needs follow-up: ' + (deal.name || 'Unnamed deal'),
+            description: 'No activity in 7+ days. Contact: ' + (deal.contact?.firstName || 'Unknown') + '. Value: $' + ((deal.value || 0) / 100).toFixed(0),
             severity: 'warning',
             module: 'crm',
             actionRequired: true,
             data: { dealId: deal.id, contactId: deal.contactId },
           },
         }).catch(() => null)
-        actions.push('Follow-up flagged: ' + deal.title)
-      }
-
-      // Score leads - mark high value deals as priority
-      const highValueDeals = await db.deal.findMany({
-        where: {
-          businessId: business.id,
-          status: 'open',
-          value: { gte: 1000000 },
-          probability: { lt: 70 },
-        },
-      })
-
-      for (const deal of highValueDeals) {
-        await db.deal.update({
-          where: { id: deal.id },
-          data: { probability: Math.min(70, (deal.probability || 50) + 10) },
-        }).catch(() => null)
-        actions.push('Scored high-value deal: ' + deal.title)
+        actions.push('Follow-up flagged: ' + (deal.name || 'Unnamed deal'))
       }
 
       // Flag deals close to expected close date
       const closingSoon = await db.deal.findMany({
         where: {
           businessId: business.id,
-          status: 'open',
-          expectedCloseDate: {
+          wonLost: null,
+          expectedClose: {
             gte: now,
             lte: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
           },
@@ -72,15 +54,33 @@ export async function GET() {
           data: {
             businessId: business.id,
             type: 'closing_soon',
-            title: 'Deal closing this week: ' + deal.title,
-            description: 'Expected close: ' + deal.expectedCloseDate?.toLocaleDateString() + '. Value: $' + ((deal.value || 0) / 100).toFixed(0) + '. Probability: ' + deal.probability + '%',
+            title: 'Deal closing this week: ' + (deal.name || 'Unnamed deal'),
+            description: 'Expected close: ' + deal.expectedClose?.toLocaleDateString() + '. Value: $' + ((deal.value || 0) / 100).toFixed(0) + '. Probability: ' + deal.probability + '%',
             severity: 'info',
             module: 'crm',
             actionRequired: false,
             data: { dealId: deal.id },
           },
         }).catch(() => null)
-        actions.push('Close reminder: ' + deal.title)
+        actions.push('Close reminder: ' + (deal.name || 'Unnamed deal'))
+      }
+
+      // Score high value deals
+      const highValueDeals = await db.deal.findMany({
+        where: {
+          businessId: business.id,
+          wonLost: null,
+          value: { gte: 100000 },
+          probability: { lt: 70 },
+        },
+      })
+
+      for (const deal of highValueDeals) {
+        await db.deal.update({
+          where: { id: deal.id },
+          data: { probability: Math.min(70, (deal.probability || 50) + 10) },
+        }).catch(() => null)
+        actions.push('Scored high-value deal: ' + (deal.name || 'Unnamed'))
       }
 
       results.push({ business: business.name, actions })
