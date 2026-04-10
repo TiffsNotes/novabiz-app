@@ -59,8 +59,6 @@ export async function POST(req: NextRequest) {
         data: {
           businessId: business.id,
           number: invoiceNumber,
-          customerName,
-          customerEmail,
           issueDate: new Date(),
           dueDate: dueDate ? new Date(dueDate) : null,
           subtotal,
@@ -68,7 +66,7 @@ export async function POST(req: NextRequest) {
           amountDue: subtotal,
           lineItems: lineItems || [],
           status: 'DRAFT',
-          notes,
+          notes: notes || (customerName ? `Customer: ${customerName} <${customerEmail}>` : ''),
         }
       })
       return NextResponse.json({ success: true, invoice })
@@ -80,7 +78,6 @@ export async function POST(req: NextRequest) {
         data: {
           businessId: business.id,
           number: billNumber,
-          vendorName,
           billDate: new Date(),
           dueDate: dueDate ? new Date(dueDate) : null,
           subtotal: parseFloat(total) || 0,
