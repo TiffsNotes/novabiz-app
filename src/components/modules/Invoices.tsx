@@ -53,45 +53,40 @@ export default function InvoicesModule() {
   }
 
   const handleSubmit = async (send: boolean) => {
-    setSubmitting(true)
-    try {
-      const payload = {
-        ...form,
-        lineItems: lineItems.filter(i => i.description || i.rate),
-        totalAmount: Math.round(invoiceTotal * 100),
-        status: send ? 'SENT' : 'DRAFT',
-      }
-      const res = await fetch('/api/finance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create_invoice', ...payload }),
-      })
-      if (res.ok) {
-        const created = await res.json()
-        setInvoices(prev => [
-          created.invoice ?? {
-            ...payload,
-            id: Date.now().toString(),
-            number: form.number,
-            client: form.client,
-            amount: payload.totalAmount,
-            amountDue: payload.totalAmount,
-            issueDate: form.issueDate,
-            currency: 'USD',
-          },
-          ...prev,
-        ])
-        resetForm()
-      } else {
-        alert('Failed to save invoice. Please try again.')
-      }
-    } catch {
-      alert('Network error. Please try again.')
-    } finally {
-      setSubmitting(false)
+  setSubmitting(true)
+  try {
+    const payload = {
+      action: 'create_invoice',
+      customerName: form.client,
+      customerEmail: form.email,
+      dueDate: form.dueDate,
+      notes: form.notes,
+      lineItems: lineItems
+        .filter(i => i.description || i.rate)
+        .map(i => ({
+          description: i.description,
+          quantity: parseFloat(i.qty) || 1,
+          unitPrice: parseFloat(i.rate) || 0,
+        })),
     }
+    const res = await fetch('/api/finance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (res.ok) {
+      const created = await res.json()
+      setInvoices(prev => [created.invoice, ...prev])
+      resetForm()
+    } else {
+      alert('Failed to save invoice. Please try again.')
+    }
+  } catch {
+    alert('Network error. Please try again.')
+  } finally {
+    setSubmitting(false)
   }
-
+}
   useEffect(() => {
     Promise.all([
       fetch('/api/finance?view=invoices').then(r => r.ok ? r.json() : { invoices: [] }),
