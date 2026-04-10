@@ -71,6 +71,17 @@ export async function POST(req: NextRequest) {
       })
       return NextResponse.json({ success: true, invoice })
     }
+    if (action === 'update_invoice') {
+      const { id: invoiceId, dueDate, notes } = body
+      const invoice = await db.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          dueDate: dueDate ? new Date(dueDate) : null,
+          notes,
+        }
+      })
+      return NextResponse.json({ success: true, invoice })
+    }
     if (action === 'create_bill') {
       const { vendorName, dueDate, total, lineItems, notes } = body
       const billNumber = 'BILL-' + Date.now().toString().slice(-6)
