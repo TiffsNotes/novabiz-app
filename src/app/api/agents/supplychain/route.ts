@@ -9,80 +9,82 @@ export async function GET() {
     for (const business of businesses) {
       const actions: string[] = []
 
-      // Check for low stock items and create reorder alerts
-      const lowStockItems = await db.product.findMany({
+      // Check for low stock inventory items
+      const lowStockItems = await db.inventoryItem.findMany({
         where: {
           businessId: business.id,
-          status: 'active',
-          inventoryQty: { lte: 10, gt: 0 },
+          qtyOnHand: { lte: 10, gt: 0 },
         },
-      })
+        include: { product: true },
+        take: 20,
+      }).catch(() => [])
 
       for (const item of lowStockItems) {
         await db.inboxItem.create({
           data: {
             businessId: business.id,
             type: 'reorder',
-            title: 'Reorder needed: ' + item.name,
-            description: 'Current stock: ' + item.inventoryQty + ' units. Recommend ordering ' + Math.max(50, (item.inventoryQty || 0) * 3) + ' units from ' + (item.vendor || 'vendor'),
+            title: 'Reorder needed: ' + (item.product?.name || 'Unknown item'),
+            description: 'Current stock: ' + item.qtyOnHand + ' units. Recommend ordering ' + Math.max(50, (item.qtyOnHand || 0) * 3) + ' units.',
             severity: 'warning',
             module: 'inventory',
             actionRequired: true,
-            data: { productId: item.id, currentQty: item.inventoryQty, suggestedQty: Math.max(50, (item.inventoryQty || 0) * 3) },
+            data: { inventoryItemId: item.id, currentQty: item.qtyOnHand },
           },
         }).catch(() => null)
-        actions.push('Reorder alert: ' + item.name)
+        actions.push('Reorder alert: ' + (item.product?.name || 'Unknown'))
       }
 
       // Check for out of stock items
-      const outOfStock = await db.product.findMany({
+      const outOfStock = await db.inventoryItem.findMany({
         where: {
           businessId: business.id,
-          status: 'active',
-          inventoryQty: { lte: 0 },
+          qtyOnHand: { lte: 0 },
         },
-      })
+        include: { product: true },
+        take: 20,
+      }).catch(() => [])
 
       for (const item of outOfStock) {
         await db.inboxItem.create({
           data: {
             businessId: business.id,
             type: 'out_of_stock',
-            title: 'OUT OF STOCK: ' + item.name,
-            description: 'This item is out of stock and may be causing lost sales. Immediate reorder recommended.',
+            title: 'OUT OF STOCK: ' + (item.product?.name || 'Unknown item'),
+            description: 'This item is out of stock. Immediate reorder recommended.',
             severity: 'critical',
             module: 'inventory',
             actionRequired: true,
-            data: { productId: item.id },
+            data: { inventoryItemId: item.id },
           },
         }).catch(() => null)
-        actions.push('Out of stock: ' + item.name)
+        actions.push('Out of stock: ' + (item.product?.name || 'Unknown'))
       }
 
-      // Check for unfulfilled orders older than 2 days
-      const overdueOrders = await db.order.findMany({
+      // Check for unfulfilled sales orders older than 2 days
+      const overdueOrders = await db.salesOrder.findMany({
         where: {
           businessId: business.id,
-          fulfillmentStatus: 'unfulfilled',
+          status: 'confirmed',
           createdAt: { lt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) },
         },
         take: 20,
-      })
+      }).catch(() => [])
 
       for (const order of overdueOrders) {
         await db.inboxItem.create({
           data: {
             businessId: business.id,
             type: 'overdue_fulfillment',
-            title: 'Order overdue: #' + order.orderNumber,
-            description: 'Order from ' + (order.customerName || 'customer') + ' has not been fulfilled after 2+ days. Total: $' + ((order.total || 0) / 100).toFixed(2),
+            title: 'Order overdue: #' + (order.orderNumber || order.id.slice(-6)),
+            description: 'Order has not been fulfilled after 2+ days.',
             severity: 'warning',
             module: 'orders',
             actionRequired: true,
             data: { orderId: order.id },
           },
         }).catch(() => null)
-        actions.push('Overdue order: ' + order.orderNumber)
+        actions.push('Overdue order flagged')
       }
 
       results.push({ business: business.name, actions })
