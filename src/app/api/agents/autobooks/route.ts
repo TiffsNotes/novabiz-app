@@ -9,25 +9,25 @@ export async function GET() {
     for (const business of businesses) {
       const actions: string[] = []
 
-      // Auto-categorize uncategorized transactions
+      // Auto-categorize uncategorized transactions using categoryRaw
       const uncategorized = await db.transaction.findMany({
-        where: { businessId: business.id, category: null },
+        where: { businessId: business.id, reviewed: false, categoryId: null },
         take: 200,
       })
 
       const rules: Record<string, string> = {
         'rent': 'Rent & Utilities', 'lease': 'Rent & Utilities',
-        'electric': 'Rent & Utilities', 'gas': 'Rent & Utilities', 'water': 'Rent & Utilities',
-        'payroll': 'Payroll', 'salary': 'Payroll', 'wages': 'Payroll',
-        'insurance': 'Insurance', 'gusto': 'Payroll',
-        'marketing': 'Marketing', 'ads': 'Marketing', 'yelp': 'Marketing', 'google': 'Marketing',
+        'electric': 'Rent & Utilities', 'gas': 'Rent & Utilities',
+        'payroll': 'Payroll', 'salary': 'Payroll', 'wages': 'Payroll', 'gusto': 'Payroll',
+        'insurance': 'Insurance',
+        'marketing': 'Marketing', 'ads': 'Marketing', 'yelp': 'Marketing', 'google ads': 'Marketing',
         'supplies': 'Supplies', 'depot': 'Cost of Goods',
-        'software': 'Software & Tech', 'subscription': 'Software & Tech', 'saas': 'Software & Tech',
+        'software': 'Software & Tech', 'subscription': 'Software & Tech',
         'sales': 'Sales Revenue', 'square': 'Sales Revenue', 'stripe': 'Sales Revenue', 'pos': 'Sales Revenue',
-        'food': 'Cost of Goods', 'beverage': 'Cost of Goods', 'inventory': 'Cost of Goods',
+        'food': 'Cost of Goods', 'beverage': 'Cost of Goods',
         'repair': 'Repairs & Maintenance', 'maintenance': 'Repairs & Maintenance',
         'travel': 'Travel & Entertainment', 'hotel': 'Travel & Entertainment',
-        'bank': 'Bank Fees', 'fee': 'Bank Fees',
+        'bank fee': 'Bank Fees', 'service fee': 'Bank Fees',
         'tax': 'Taxes', 'irs': 'Taxes',
       }
 
@@ -38,7 +38,11 @@ export async function GET() {
           if (desc.includes(keyword)) {
             await db.transaction.update({
               where: { id: txn.id },
-              data: { category, status: 'auto_categorized' },
+              data: {
+                categoryRaw: [category],
+                categorySource: 'auto',
+                reviewed: true,
+              },
             })
             categorized++
             break
@@ -51,17 +55,17 @@ export async function GET() {
       }
 
       // Flag anomalies - transactions significantly larger than average
-      const avgResult = await db.transaction.aggregate({
-        where: { businessId: business.id, type: 'expense' },
-        _avg: { amount: true },
+      const allExpenses = await db.transaction.findMany({
+        where: { businessId: business.id, amount: { lt: 0 } },
+        select: { amount: true },
       })
-      const avg = Math.abs(avgResult._avg.amount || 0)
 
-      if (avg > 0) {
+      if (allExpenses.length > 5) {
+        const avg = allExpenses.reduce((s, t) => s + Math.abs(t.amount), 0) / allExpenses.length
+
         const anomalies = await db.transaction.findMany({
           where: {
             businessId: business.id,
-            type: 'expense',
             amount: { lt: -(avg * 5) },
             date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
           },
@@ -73,14 +77,14 @@ export async function GET() {
               businessId: business.id,
               type: 'anomaly',
               title: 'Unusual expense detected',
-              description: (anomaly.description || 'Unknown') + ' — $' + Math.abs(anomaly.amount / 100).toFixed(2) + ' (5x above average)',
+              description: (anomaly.description || 'Unknown') + ' — $' + Math.abs(anomaly.amount / 100).toFixed(2) + ' (5x above average of $' + (avg / 100).toFixed(2) + ')',
               severity: 'warning',
               module: 'autobooks',
               actionRequired: true,
               data: { transactionId: anomaly.id, amount: anomaly.amount },
             },
           }).catch(() => null)
-          actions.push('Flagged anomaly: ' + (anomaly.description || 'Unknown transaction'))
+          actions.push('Flagged anomaly: ' + (anomaly.description || 'Unknown'))
         }
       }
 
