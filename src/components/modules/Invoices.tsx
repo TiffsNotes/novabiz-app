@@ -1,18 +1,17 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { FileText, Plus, Send, CheckCircle, AlertTriangle, Download, Clock } from 'lucide-react'
+import { Plus, Send, CheckCircle, AlertTriangle, Download } from 'lucide-react'
 import { PageHeader, Card, StatCard, Badge, Table, Tabs, Button, Modal, Input, EmptyState } from '@/components/ui'
 
 type Invoice = { id: string; number: string; client: string; amount: number; amountDue: number; status: string; issueDate: string; dueDate?: string; currency: string }
 type Bill = { id: string; number: string; vendor: string; amount: number; amountPaid: number; status: string; billDate: string; dueDate?: string }
 type ARStats = { totalAR: number; overdue: number; dueThisWeek: number; paidThisMonth: number }
 type APStats = { totalAP: number; overdue: number; dueThisWeek: number; paidThisMonth: number }
+type LineItem = { description: string; qty: string; rate: string }
 
 const fmt = (c: number) => `$${(c / 100).toLocaleString()}`
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
 const isOverdue = (d?: string) => d ? new Date(d) < new Date() : false
-
-type LineItem = { description: string; qty: string; rate: string }
 
 const defaultForm = {
   client: '',
@@ -43,11 +42,7 @@ export default function InvoicesModule() {
 
   const addLineItem = () => setLineItems(items => [...items, { description: '', qty: '1', rate: '' }])
 
-  const lineTotal = (item: LineItem) => {
-    const qty = parseFloat(item.qty) || 0
-    const rate = parseFloat(item.rate) || 0
-    return qty * rate
-  }
+  const lineTotal = (item: LineItem) => (parseFloat(item.qty) || 0) * (parseFloat(item.rate) || 0)
 
   const invoiceTotal = lineItems.reduce((s, item) => s + lineTotal(item), 0)
 
@@ -73,7 +68,19 @@ export default function InvoicesModule() {
       })
       if (res.ok) {
         const created = await res.json()
-        setInvoices(prev => [created.invoice ?? { ...payload, id: Date.now().toString(), number: form.number, client: form.client, amount: payload.totalAmount, amountDue: payload.totalAmount, issueDate: form.issueDate, currency: 'USD' }, ...prev])
+        setInvoices(prev => [
+          created.invoice ?? {
+            ...payload,
+            id: Date.now().toString(),
+            number: form.number,
+            client: form.client,
+            amount: payload.totalAmount,
+            amountDue: payload.totalAmount,
+            issueDate: form.issueDate,
+            currency: 'USD',
+          },
+          ...prev,
+        ])
         resetForm()
       } else {
         alert('Failed to save invoice. Please try again.')
@@ -116,7 +123,6 @@ export default function InvoicesModule() {
         }
       />
 
-      {/* AR / AP Summary */}
       <div className="grid grid-cols-4 gap-3 p-4 border-b border-black/[0.07] bg-gray-50">
         <StatCard label="Accounts Receivable" value={arStats ? fmt(arStats.totalAR) : '—'} sub="total outstanding" color="#2563eb" />
         <StatCard label="Overdue Invoices" value={arStats ? fmt(arStats.overdue) : '—'} sub={`${overdueInvoices.length} invoice${overdueInvoices.length !== 1 ? 's' : ''}`} color="#dc2626" icon={AlertTriangle} />
@@ -124,7 +130,6 @@ export default function InvoicesModule() {
         <StatCard label="Collected This Month" value={arStats ? fmt(arStats.paidThisMonth) : '—'} color="#00a855" icon={CheckCircle} />
       </div>
 
-      {/* Overdue alert */}
       {overdueInvoices.length > 0 && (
         <div className="px-4 py-2.5 bg-red-50 border-b border-red-100 flex items-center gap-3">
           <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />
@@ -230,7 +235,6 @@ export default function InvoicesModule() {
         )}
       </div>
 
-      {/* New Invoice Modal */}
       <Modal open={newInvoice} onClose={resetForm} title="New Invoice" width="max-w-2xl">
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -278,9 +282,6 @@ export default function InvoicesModule() {
           </div>
         </div>
       </Modal>
-    </div>
-  )
-}
     </div>
   )
 }
