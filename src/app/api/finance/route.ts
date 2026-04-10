@@ -11,8 +11,26 @@ export async function GET(req: NextRequest) {
     if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     const view = new URL(req.url).searchParams.get('view') || 'invoices'
     if (view === 'invoices') {
-const invoice = await db.invoice.create({ data: { businessId: business.id, invoiceNumber, customerName, customerEmail, issueDate: new Date(), dueDate: dueDate ? new Date(dueDate) : null, total, status: 'open', notes, source: 'manual' } })      return NextResponse.json({ invoices })
+if (action === 'create_invoice') {
+  const { customerName, customerEmail, dueDate, lineItems, notes } = body
+  const total = (lineItems || []).reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
+  const invoiceNumber = 'INV-' + Date.now().toString().slice(-6)
+  const invoice = await db.invoice.create({
+    data: {
+      businessId: business.id,
+      invoiceNumber,
+      customerName,
+      customerEmail,
+      issueDate: new Date(),
+      dueDate: dueDate ? new Date(dueDate) : null,
+      total,
+      status: 'open',
+      notes,
+      source: 'manual',
     }
+  })
+  return NextResponse.json({ success: true, invoice })
+}
     if (view === 'bills') {
       const bills = await db.bill.findMany({ where: { businessId: business.id }, orderBy: { createdAt: 'desc' }, take: 100 })
       return NextResponse.json({ bills })
