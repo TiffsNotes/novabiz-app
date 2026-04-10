@@ -12,6 +12,17 @@ const fmt = (c: number) => `$${(c / 100).toLocaleString()}`
 const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
 const isOverdue = (d?: string) => d ? new Date(d) < new Date() : false
 
+type LineItem = { description: string; qty: string; rate: string }
+
+const defaultForm = {
+  client: '',
+  email: '',
+  number: '',
+  issueDate: new Date().toISOString().split('T')[0],
+  dueDate: '',
+  notes: '',
+}
+
 export default function InvoicesModule() {
   const [tab, setTab] = useState('ar')
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -20,6 +31,59 @@ export default function InvoicesModule() {
   const [apStats, setAPStats] = useState<APStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [newInvoice, setNewInvoice] = useState(false)
+  const [form, setForm] = useState(defaultForm)
+  const [lineItems, setLineItems] = useState<LineItem[]>([{ description: '', qty: '1', rate: '' }])
+  const [submitting, setSubmitting] = useState(false)
+
+  const setField = (k: keyof typeof defaultForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const setLineField = (i: number, k: keyof LineItem) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setLineItems(items => items.map((item, idx) => idx === i ? { ...item, [k]: e.target.value } : item))
+
+  const addLineItem = () => setLineItems(items => [...items, { description: '', qty: '1', rate: '' }])
+
+  const lineTotal = (item: LineItem) => {
+    const qty = parseFloat(item.qty) || 0
+    const rate = parseFloat(item.rate) || 0
+    return qty * rate
+  }
+
+  const invoiceTotal = lineItems.reduce((s, item) => s + lineTotal(item), 0)
+
+  const resetForm = () => {
+    setForm(defaultForm)
+    setLineItems([{ description: '', qty: '1', rate: '' }])
+    setNewInvoice(false)
+  }
+
+  const handleSubmit = async (send: boolean) => {
+    setSubmitting(true)
+    try {
+      const payload = {
+        ...form,
+        lineItems: lineItems.filter(i => i.description || i.rate),
+        totalAmount: Math.round(invoiceTotal * 100),
+        status: send ? 'SENT' : 'DRAFT',
+      }
+      const res = await fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create_invoice', ...payload }),
+      })
+      if (res.ok) {
+        const created = await res.json()
+        setInvoices(prev => [created.invoice ?? { ...payload, id: Date.now().toString(), number: form.number, client: form.client, amount: payload.totalAmount, amountDue: payload.totalAmount, issueDate: form.issueDate, currency: 'USD' }, ...prev])
+        resetForm()
+      } else {
+        alert('Failed to save invoice. Please try again.')
+      }
+    } catch {
+      alert('Network error. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   useEffect(() => {
     Promise.all([
@@ -167,16 +231,16 @@ export default function InvoicesModule() {
       </div>
 
       {/* New Invoice Modal */}
-      <Modal open={newInvoice} onClose={() => setNewInvoice(false)} title="New Invoice" width="max-w-2xl">
+      <Modal open={newInvoice} onClose={resetForm} title="New Invoice" width="max-w-2xl">
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Client name" placeholder="Acme Corp" />
-            <Input label="Client email" type="email" placeholder="billing@acme.com" />
+            <Input label="Client name" placeholder="Acme Corp" value={form.client} onChange={setField('client')} />
+            <Input label="Client email" type="email" placeholder="billing@acme.com" value={form.email} onChange={setField('email')} />
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <Input label="Invoice #" placeholder="INV-0001" />
-            <Input label="Issue date" type="date" defaultValue={new Date().toISOString().split('T')[0]} />
-            <Input label="Due date" type="date" />
+            <Input label="Invoice #" placeholder="INV-0001" value={form.number} onChange={setField('number')} />
+            <Input label="Issue date" type="date" value={form.issueDate} onChange={setField('issueDate')} />
+            <Input label="Due date" type="date" value={form.dueDate} onChange={setField('dueDate')} />
           </div>
           <div>
             <div className="text-xs font-medium text-gray-500 mb-2">Line Items</div>
@@ -187,22 +251,36 @@ export default function InvoicesModule() {
                 <span className="col-span-2">Rate</span>
                 <span className="col-span-2">Amount</span>
               </div>
-              <div className="grid grid-cols-12 gap-2">
-                <Input className="col-span-6" placeholder="Service description" />
-                <Input className="col-span-2" type="number" defaultValue="1" />
-                <Input className="col-span-2" type="number" placeholder="0.00" />
-                <div className="col-span-2 flex items-center justify-center text-sm font-medium text-gray-500">$0.00</div>
-              </div>
+              {lineItems.map((item, i) => (
+                <div key={i} className="grid grid-cols-12 gap-2">
+                  <Input className="col-span-6" placeholder="Service description" value={item.description} onChange={setLineField(i, 'description')} />
+                  <Input className="col-span-2" type="number" value={item.qty} onChange={setLineField(i, 'qty')} />
+                  <Input className="col-span-2" type="number" placeholder="0.00" value={item.rate} onChange={setLineField(i, 'rate')} />
+                  <div className="col-span-2 flex items-center justify-center text-sm font-semibold text-gray-700">
+                    ${lineTotal(item).toFixed(2)}
+                  </div>
+                </div>
+              ))}
             </div>
-            <Button size="xs" variant="ghost" className="mt-2">+ Add line item</Button>
+            <Button size="xs" variant="ghost" className="mt-2" onClick={addLineItem}>+ Add line item</Button>
           </div>
-          <Input label="Notes / payment terms" placeholder="Payment due within 30 days" />
+          <div className="flex justify-end text-sm font-bold text-gray-800 pr-1">
+            Total: ${invoiceTotal.toFixed(2)}
+          </div>
+          <Input label="Notes / payment terms" placeholder="Payment due within 30 days" value={form.notes} onChange={setField('notes')} />
           <div className="flex gap-2 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => setNewInvoice(false)}>Save as Draft</Button>
-            <Button variant="success" className="flex-1" icon={Send}>Save & Send</Button>
+            <Button variant="secondary" className="flex-1" onClick={() => handleSubmit(false)} disabled={submitting}>
+              {submitting ? 'Saving…' : 'Save as Draft'}
+            </Button>
+            <Button variant="success" className="flex-1" icon={Send} onClick={() => handleSubmit(true)} disabled={submitting}>
+              {submitting ? 'Sending…' : 'Save & Send'}
+            </Button>
           </div>
         </div>
       </Modal>
+    </div>
+  )
+}
     </div>
   )
 }
