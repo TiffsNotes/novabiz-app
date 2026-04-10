@@ -30,6 +30,7 @@ export default function InvoicesModule() {
   const [apStats, setAPStats] = useState<APStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [newInvoice, setNewInvoice] = useState(false)
+  const [editInvoice, setEditInvoice] = useState<Invoice | null>(null)
   const [form, setForm] = useState(defaultForm)
   const [lineItems, setLineItems] = useState<LineItem[]>([{ description: '', qty: '1', rate: '' }])
   const [submitting, setSubmitting] = useState(false)
@@ -53,40 +54,57 @@ export default function InvoicesModule() {
   }
 
   const handleSubmit = async (send: boolean) => {
-  setSubmitting(true)
-  try {
-    const payload = {
-      action: 'create_invoice',
-      customerName: form.client,
-      customerEmail: form.email,
-      dueDate: form.dueDate,
-      notes: form.notes,
-      lineItems: lineItems
-        .filter(i => i.description || i.rate)
-        .map(i => ({
-          description: i.description,
-          quantity: parseFloat(i.qty) || 1,
-          unitPrice: parseFloat(i.rate) || 0,
-        })),
+    setSubmitting(true)
+    try {
+      const payload = {
+        action: 'create_invoice',
+        customerName: form.client,
+        customerEmail: form.email,
+        dueDate: form.dueDate,
+        notes: form.notes,
+        lineItems: lineItems
+          .filter(i => i.description || i.rate)
+          .map(i => ({
+            description: i.description,
+            quantity: parseFloat(i.qty) || 1,
+            unitPrice: parseFloat(i.rate) || 0,
+          })),
+      }
+      const res = await fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        const created = await res.json()
+        setInvoices(prev => [created.invoice, ...prev])
+        resetForm()
+      } else {
+        alert('Failed to save invoice. Please try again.')
+      }
+    } catch {
+      alert('Network error. Please try again.')
+    } finally {
+      setSubmitting(false)
     }
-    const res = await fetch('/api/finance', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (res.ok) {
-      const created = await res.json()
-      setInvoices(prev => [created.invoice, ...prev])
-      resetForm()
-    } else {
-      alert('Failed to save invoice. Please try again.')
-    }
-  } catch {
-    alert('Network error. Please try again.')
-  } finally {
-    setSubmitting(false)
   }
-}
+
+  const handleMarkPaid = async (invoice: Invoice) => {
+    try {
+      const res = await fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_paid', type: 'invoice', id: invoice.id }),
+      })
+      if (res.ok) {
+        setInvoices(prev => prev.map(i => i.id === invoice.id ? { ...i, status: 'PAID', amountDue: 0 } : i))
+        setEditInvoice(null)
+      }
+    } catch {
+      alert('Network error. Please try again.')
+    }
+  }
+
   useEffect(() => {
     Promise.all([
       fetch('/api/finance?view=invoices').then(r => r.ok ? r.json() : { invoices: [] }),
@@ -103,7 +121,6 @@ export default function InvoicesModule() {
   }, [])
 
   const overdueInvoices = invoices.filter(i => i.status === 'OVERDUE' || (i.status !== 'PAID' && i.status !== 'VOID' && isOverdue(i.dueDate)))
-  const overdueBills = bills.filter(b => b.status !== 'paid' && isOverdue(b.dueDate))
 
   return (
     <div className="h-full flex flex-col">
@@ -145,9 +162,10 @@ export default function InvoicesModule() {
         {tab === 'ar' && (
           <Card padding={false}>
             <Table<Invoice>
+              onRowClick={(row) => setEditInvoice(row)}
               columns={[
                 { key: 'number', header: 'Invoice #', render: r => <span className="font-mono text-sm font-medium text-gray-700">{r.number}</span> },
-                { key: 'client', header: 'Client', render: r => <span className="font-medium text-gray-900">{r.client}</span> },
+                { key: 'client', header: 'Client', render: r => <span className="font-medium text-gray-900">{r.client || '—'}</span> },
                 { key: 'amount', header: 'Amount', render: r => <span className="font-semibold tabular-nums">{fmt(r.amount)}</span> },
                 { key: 'amountDue', header: 'Balance Due', render: r => (
                   <span className={`font-bold tabular-nums ${r.amountDue > 0 ? 'text-red-600' : 'text-[#00a855]'}`}>
@@ -166,13 +184,6 @@ export default function InvoicesModule() {
                     {r.status.toLowerCase()}
                   </Badge>
                 )},
-                { key: 'actions', header: '', render: r => r.status !== 'PAID' && r.status !== 'VOID' ? (
-                  <div className="flex gap-1">
-                    {r.status === 'DRAFT' && <Button size="xs" variant="secondary" icon={Send}>Send</Button>}
-                    {r.status !== 'DRAFT' && <Button size="xs" variant="secondary" icon={CheckCircle}>Record Payment</Button>}
-                    <Button size="xs" variant="ghost" icon={Download} />
-                  </div>
-                ) : null },
               ]}
               data={invoices}
               emptyMessage="No invoices yet. Create your first invoice to start tracking payments."
@@ -195,9 +206,7 @@ export default function InvoicesModule() {
                   </span>
                 )},
                 { key: 'status', header: 'Status', render: r => (
-                  <Badge variant={r.status === 'paid' ? 'green' : r.status === 'approved' ? 'blue' : 'gray'}>
-                    {r.status}
-                  </Badge>
+                  <Badge variant={r.status === 'paid' ? 'green' : r.status === 'approved' ? 'blue' : 'gray'}>{r.status}</Badge>
                 )},
               ]}
               data={bills}
@@ -230,6 +239,56 @@ export default function InvoicesModule() {
         )}
       </div>
 
+      {/* Invoice Detail Modal */}
+      <Modal open={!!editInvoice} onClose={() => setEditInvoice(null)} title={`Invoice ${editInvoice?.number || ''}`} width="max-w-2xl">
+        {editInvoice && (
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Invoice Number</div>
+                <div className="font-mono font-semibold text-gray-900">{editInvoice.number}</div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Status</div>
+                <Badge variant={editInvoice.status === 'PAID' ? 'green' : editInvoice.status === 'OVERDUE' ? 'red' : editInvoice.status === 'SENT' ? 'blue' : 'gray'}>
+                  {editInvoice.status.toLowerCase()}
+                </Badge>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Issue Date</div>
+                <div className="text-gray-900">{fmtDate(editInvoice.issueDate)}</div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Due Date</div>
+                <div className={isOverdue(editInvoice.dueDate) && editInvoice.status !== 'PAID' ? 'text-red-600 font-medium' : 'text-gray-900'}>
+                  {fmtDate(editInvoice.dueDate)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Total</div>
+                <div className="font-semibold text-gray-900">{fmt(editInvoice.amount)}</div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Balance Due</div>
+                <div className={`font-bold ${editInvoice.amountDue > 0 ? 'text-red-600' : 'text-[#00a855]'}`}>
+                  {fmt(editInvoice.amountDue)}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              {editInvoice.status === 'DRAFT' && (
+                <Button variant="primary" className="flex-1" icon={Send}>Send Invoice</Button>
+              )}
+              {editInvoice.status !== 'PAID' && editInvoice.status !== 'VOID' && (
+                <Button variant="success" className="flex-1" icon={CheckCircle} onClick={() => handleMarkPaid(editInvoice)}>Mark as Paid</Button>
+              )}
+              <Button variant="secondary" onClick={() => setEditInvoice(null)}>Close</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* New Invoice Modal */}
       <Modal open={newInvoice} onClose={resetForm} title="New Invoice" width="max-w-2xl">
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -251,15 +310,15 @@ export default function InvoicesModule() {
                 <span className="col-span-2">Amount</span>
               </div>
               {lineItems.map((item, i) => (
-  <div key={i} className="grid grid-cols-12 gap-2">
-    <Input className="col-span-6" placeholder="Service description" value={item.description} onChange={setLineField(i, 'description')} />
-    <Input className="col-span-2" type="number" value={item.qty} onChange={setLineField(i, 'qty')} />
-    <Input className="col-span-2" type="number" placeholder="0.00" value={item.rate} onChange={setLineField(i, 'rate')} />
-    <div className="col-span-2 flex items-center justify-center text-sm font-semibold text-gray-700">
-      ${lineTotal(item).toFixed(2)}
-    </div>
-  </div>
-))}
+                <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                  <div className="col-span-6"><Input placeholder="Service description" value={item.description} onChange={setLineField(i, 'description')} /></div>
+                  <div className="col-span-2"><Input type="number" value={item.qty} onChange={setLineField(i, 'qty')} /></div>
+                  <div className="col-span-2"><Input type="number" placeholder="0.00" value={item.rate} onChange={setLineField(i, 'rate')} /></div>
+                  <div className="col-span-2 flex items-center justify-center text-sm font-semibold text-gray-700">
+                    ${lineTotal(item).toFixed(2)}
+                  </div>
+                </div>
+              ))}
             </div>
             <Button size="xs" variant="ghost" className="mt-2" onClick={addLineItem}>+ Add line item</Button>
           </div>
