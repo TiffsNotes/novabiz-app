@@ -87,6 +87,7 @@ model Business {
   notifications      Notification[]
   auditLogs          AuditLog[]
   categories         Category[]
+  agentAlerts        AgentAlert[]
 
   @@map("businesses")
 }
