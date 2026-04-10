@@ -1,0 +1,12 @@
+{
+  "crons": [
+    { "path": "/api/agents/autobooks", "schedule": "0 6 * * *" },
+    { "path": "/api/agents/payroll", "schedule": "0 8 * * 1" },
+    { "path": "/api/agents/growth", "schedule": "0 7 * * *" },
+    { "path": "/api/agents/sales", "schedule": "0 8 * * 1-5" },
+    { "path": "/api/agents/supplychain", "schedule": "0 9 * * *" },
+    { "path": "/api/agents/cashoracle", "schedule": "0 6 * * *" },
+    { "path": "/api/agents/compliance", "schedule": "0 8 1 * *" },
+    { "path": "/api/agents/ops", "schedule": "0 7 * * 1-5" }
+  ]
+}
