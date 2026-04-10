@@ -1,385 +1,164 @@
 'use client'
-import { useState, useEffect } from 'react'
-import {
-  AlertTriangle, CheckCircle, TrendingUp, TrendingDown, Zap,
-  RefreshCw, ChevronDown, ChevronRight, Clock, ArrowRight,
-  Shield, DollarSign, Package, Users, ShoppingCart, BarChart3,
-  AlertCircle, Target, Lightbulb, Activity
-} from 'lucide-react'
-import { PageHeader, Card, Badge, Button } from '@/components/ui'
 
-// ─── TYPES ───────────────────────────────────────────────────
-type Severity = 'CRITICAL' | 'WARNING' | 'WATCH' | 'POSITIVE'
+import { useState, useRef, useEffect } from 'react'
+import { Send, Loader2, Sparkles, TrendingUp, Package, Megaphone, Users, Scale, Heart, Cpu, Star } from 'lucide-react'
 
-interface NOVASignal {
-  id: string
-  severity: Severity
-  category: string
-  module: string
-  title: string
-  situation: string
-  impact: string
-  solution: string[]
-  urgencyWindow: string
-  evidence: Record<string, unknown>
-  autoFixable: boolean
-  autoFixAction?: string
-  detectedAt: string
+const EXECUTIVES = [
+  { id: 'cos', name: 'NOVA CoS', role: 'Chief of Staff', color: '#6366f1', bg: '#EEF2FF', description: 'Daily brief, priorities, coordination' },
+  { id: 'finance', name: 'NOVA Finance', role: 'CFO', color: '#10b981', bg: '#ECFDF5', description: 'Books, cash flow, invoices, forecasting' },
+  { id: 'ops', name: 'NOVA Ops', role: 'COO', color: '#f59e0b', bg: '#FFFBEB', description: 'Inventory, orders, procurement' },
+  { id: 'growth', name: 'NOVA Growth', role: 'CMO', color: '#ec4899', bg: '#FDF2F8', description: 'Marketing, campaigns, reputation' },
+  { id: 'sales', name: 'NOVA Sales', role: 'CRO', color: '#3b82f6', bg: '#EFF6FF', description: 'Pipeline, deals, follow-ups' },
+  { id: 'legal', name: 'NOVA Legal', role: 'General Counsel', color: '#8b5cf6', bg: '#F5F3FF', description: 'Compliance, contracts, tax' },
+  { id: 'people', name: 'NOVA People', role: 'CPO', color: '#f43f5e', bg: '#FFF1F2', description: 'HR, payroll, hiring, culture' },
+  { id: 'tech', name: 'NOVA Tech', role: 'CTO', color: '#06b6d4', bg: '#ECFEFF', description: 'Integrations, automations, AI' },
+]
+
+const SUGGESTED: Record<string, string[]> = {
+  cos: ['What needs my attention today?', 'Give me a business health check', 'Top 3 priorities this week?'],
+  finance: ['How is our cash flow?', 'Which invoices are overdue?', 'What is our runway?'],
+  ops: ['What items are low stock?', 'How many orders pending?', 'Optimize our procurement'],
+  growth: ['Draft a campaign for this week', 'How to increase retention?', 'Analyze our marketing'],
+  sales: ['Which deals need follow-up?', 'Score my pipeline', 'How to close the biggest deal?'],
+  legal: ['What compliance deadlines?', 'Review contractor agreements', 'What tax filings are due?'],
+  people: ['Upcoming performance reviews?', 'Draft a job description', 'What is payroll this month?'],
+  tech: ['What integrations are connected?', 'Set up invoice automation', 'How can AI improve operations?'],
 }
 
-interface NOVAReport {
-  businessName: string
-  generatedAt: string
-  overallHealth: 'CRITICAL' | 'AT_RISK' | 'STABLE' | 'HEALTHY' | 'THRIVING'
-  healthScore: number
-  executiveSummary: string
-  criticalAlerts: NOVASignal[]
-  warnings: NOVASignal[]
-  watchItems: NOVASignal[]
-  positiveSignals: NOVASignal[]
-  topPriority: NOVASignal | null
-  todaysFocus: string[]
-  horizon30Days: string
-  autoFixCount: number
+const WELCOME: Record<string, string> = {
+  cos: 'Good day. I am NOVA CoS, your Chief of Staff. I have a full view across all departments. What would you like to focus on today?',
+  finance: 'Hello. I am NOVA Finance, your CFO. I am monitoring your books and cash position. What financial question can I help with?',
+  ops: 'Hi there. I am NOVA Ops, your COO. Tracking inventory, orders, and operations. What operational challenge can I help solve?',
+  growth: 'Hey! I am NOVA Growth, your CMO. Ready to build campaigns and grow revenue. What marketing initiative should we tackle?',
+  sales: 'Let us talk revenue. I am NOVA Sales, your CRO. Watching your pipeline. What deals should we focus on?',
+  legal: 'Good day. I am NOVA Legal, your General Counsel. I keep your business compliant. What legal question can I help with?',
+  people: 'Hi! I am NOVA People, your CPO. Here to help with HR, payroll, and your team. What can I assist with?',
+  tech: 'Hello. I am NOVA Tech, your CTO. I manage integrations and AI. What technical challenge can I help solve?',
 }
 
-// ─── SEVERITY CONFIG ─────────────────────────────────────────
-const SEV_CONFIG: Record<Severity, {
-  bg: string; border: string; text: string; icon: React.ElementType; label: string; dot: string
-}> = {
-  CRITICAL: { bg: '#fef2f2', border: '#fca5a5', text: '#dc2626', icon: AlertTriangle, label: 'Critical', dot: '#dc2626' },
-  WARNING:  { bg: '#fffbeb', border: '#fcd34d', text: '#d97706', icon: AlertCircle,  label: 'Warning',  dot: '#d97706' },
-  WATCH:    { bg: '#eff6ff', border: '#93c5fd', text: '#2563eb', icon: Activity,     label: 'Watch',    dot: '#2563eb' },
-  POSITIVE: { bg: '#f0fdf4', border: '#86efac', text: '#16a34a', icon: CheckCircle,  label: 'Positive', dot: '#16a34a' },
+interface Message { role: 'user' | 'assistant'; content: string }
+
+function getIcon(id: string) {
+  const icons: Record<string, any> = { cos: Star, finance: TrendingUp, ops: Package, growth: Megaphone, sales: Users, legal: Scale, people: Heart, tech: Cpu }
+  return icons[id] || Star
 }
 
-const HEALTH_CONFIG = {
-  CRITICAL: { color: '#dc2626', bg: '#fef2f2', label: 'Critical', desc: 'Immediate action required' },
-  AT_RISK:  { color: '#d97706', bg: '#fffbeb', label: 'At Risk',  desc: 'Several issues need attention' },
-  STABLE:   { color: '#2563eb', bg: '#eff6ff', label: 'Stable',   desc: 'Monitoring active risks' },
-  HEALTHY:  { color: '#00a855', bg: '#f0fdf4', label: 'Healthy',  desc: 'Operating well' },
-  THRIVING: { color: '#059669', bg: '#ecfdf5', label: 'Thriving', desc: 'Firing on all cylinders' },
-}
+export default function NOVAIntelligenceModule() {
+  const [activeExec, setActiveExec] = useState(EXECUTIVES[0])
+  const [messages, setMessages] = useState<Message[]>([{ role: 'assistant', content: WELCOME.cos }])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const Icon = getIcon(activeExec.id)
 
-const MODULE_ICONS: Record<string, React.ElementType> = {
-  AutoBooks: DollarSign, CashOracle: TrendingUp, SalesFlow: Target,
-  PayrollAI: Users, SupplyChainAI: Package, GrowthEngine: BarChart3,
-  ComplianceGuard: Shield, HR: Users, 'SupplyChain': Package,
-}
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-// ─── SIGNAL CARD ─────────────────────────────────────────────
-function SignalCard({ signal, defaultOpen = false }: { signal: NOVASignal; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen)
-  const [fixing, setFix] = useState(false)
-  const sev = SEV_CONFIG[signal.severity]
-  const Icon = sev.icon
-  const ModuleIcon = MODULE_ICONS[signal.module] || Zap
+  function switchExec(exec: typeof EXECUTIVES[0]) {
+    setActiveExec(exec)
+    setMessages([{ role: 'assistant', content: WELCOME[exec.id] || 'Hello! How can I help?' }])
+    setInput('')
+  }
 
-  const fix = async () => {
-    setFix(true)
-    // Trigger auto-fix via CommandInbox
-    await fetch('/api/intelligence', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auto_fix', signalId: signal.id }) }).catch(() => {})
-    setTimeout(() => setFix(false), 2000)
+  async function send(content: string) {
+    if (!content.trim() || loading) return
+    const newMsgs: Message[] = [...messages, { role: 'user', content }]
+    setMessages(newMsgs)
+    setInput('')
+    setLoading(true)
+    try {
+      const res = await fetch('/api/nova', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ executive: activeExec.id, messages: newMsgs }),
+      })
+      const data = await res.json()
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply || 'I encountered an error. Please try again.' }])
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Connection error. Please try again.' }])
+    } finally { setLoading(false) }
   }
 
   return (
-    <div className="rounded-xl border overflow-hidden transition-shadow hover:shadow-md" style={{ borderColor: sev.border, background: '#fff' }}>
-      {/* Header */}
-      <button className="w-full text-left" onClick={() => setOpen(!open)}>
-        <div className="flex items-start gap-3 p-4">
-          {/* Severity indicator */}
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: sev.bg }}>
-            <Icon size={15} style={{ color: sev.text }} />
+    <div style={{ display: 'flex', height: 'calc(100vh - 48px)', fontFamily: 'system-ui, sans-serif', background: '#f8f8f6' }}>
+      <div style={{ width: 220, background: 'white', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '16px', borderBottom: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Sparkles size={15} color="#6366f1" />
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#111' }}>NOVA Executives</span>
           </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-0.5">
-              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: sev.text, background: sev.bg }}>
-                {sev.label}
-              </span>
-              <span className="text-xs text-gray-400 flex items-center gap-1">
-                <ModuleIcon size={10} />{signal.module}
-              </span>
-              <span className="text-xs text-gray-400 flex items-center gap-1">
-                <Clock size={10} />Act within {signal.urgencyWindow}
-              </span>
-              {signal.autoFixable && (
-                <span className="text-xs font-medium text-[#007a3d] bg-[#e8f8f0] px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <Zap size={9} />NOVA can fix
-                </span>
-              )}
-            </div>
-            <div className="font-semibold text-gray-900 text-sm">{signal.title}</div>
-            <div className="text-xs text-gray-500 mt-0.5 line-clamp-1">{signal.situation}</div>
+          <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Your AI leadership team</p>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
+          {EXECUTIVES.map(exec => {
+            const ExIcon = getIcon(exec.id)
+            const isActive = activeExec.id === exec.id
+            return (
+              <button key={exec.id} onClick={() => switchExec(exec)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 8, border: 'none', background: isActive ? exec.bg : 'transparent', cursor: 'pointer', textAlign: 'left', marginBottom: 2 }}>
+                <div style={{ width: 30, height: 30, borderRadius: 7, background: isActive ? exec.color : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <ExIcon size={14} color={isActive ? 'white' : '#6b7280'} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: isActive ? exec.color : '#374151' }}>{exec.name}</div>
+                  <div style={{ fontSize: 10, color: '#9ca3af' }}>{exec.role}</div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <div style={{ background: 'white', borderBottom: '1px solid #e5e7eb', padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 9, background: activeExec.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon size={18} color="white" />
           </div>
-
-          <div className="flex-shrink-0 text-gray-400 mt-1">
-            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>{activeExec.name}</div>
+            <div style={{ fontSize: 11, color: '#6b7280' }}>{activeExec.role} · {activeExec.description}</div>
           </div>
         </div>
-      </button>
-
-      {/* Expanded detail */}
-      {open && (
-        <div className="px-4 pb-4 pt-0 border-t space-y-4" style={{ borderColor: sev.border + '80' }}>
-          {/* Situation */}
-          <div>
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">What's happening</div>
-            <p className="text-sm text-gray-700 leading-relaxed">{signal.situation}</p>
-          </div>
-
-          {/* Impact */}
-          <div className="rounded-xl p-3" style={{ background: sev.bg }}>
-            <div className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: sev.text }}>Why it matters</div>
-            <p className="text-sm leading-relaxed" style={{ color: sev.text }}>{signal.impact}</p>
-          </div>
-
-          {/* Solution */}
-          <div>
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Exactly what to do</div>
-            <ol className="space-y-2">
-              {signal.solution.map((step, i) => (
-                <li key={i} className="flex gap-3 text-sm">
-                  <span className="w-5 h-5 rounded-full bg-gray-900 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                    {i + 1}
-                  </span>
-                  <span className="text-gray-700 leading-relaxed">{step}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
-
-          {/* Auto-fix button */}
-          {signal.autoFixable && signal.autoFixAction && (
-            <div className="flex items-center gap-3 pt-1">
-              <Button size="sm" variant="success" icon={Zap} loading={fixing} onClick={fix}>
-                {fixing ? 'Adding to CommandInbox...' : `NOVA: ${signal.autoFixAction}`}
-              </Button>
-              <span className="text-xs text-gray-400">Will queue in CommandInbox for your approval</span>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {messages.map((msg, i) => (
+            <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row' }}>
+              {msg.role === 'assistant' && (
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: activeExec.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Icon size={14} color="white" />
+                </div>
+              )}
+              <div style={{ maxWidth: '72%', padding: '10px 14px', borderRadius: msg.role === 'user' ? '14px 4px 14px 14px' : '4px 14px 14px 14px', background: msg.role === 'user' ? '#111' : 'white', color: msg.role === 'user' ? 'white' : '#111', fontSize: 13, lineHeight: 1.6, boxShadow: '0 1px 3px rgba(0,0,0,0.08)', whiteSpace: 'pre-wrap' }}>
+                {msg.content}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: activeExec.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon size={14} color="white" />
+              </div>
+              <div style={{ padding: '10px 14px', borderRadius: '4px 14px 14px 14px', background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+                <Loader2 size={15} color={activeExec.color} style={{ animation: 'spin 1s linear infinite' }} />
+              </div>
             </div>
           )}
+          <div ref={bottomRef} />
         </div>
-      )}
-    </div>
-  )
-}
-
-// ─── HEALTH GAUGE ────────────────────────────────────────────
-function HealthGauge({ score, health }: { score: number; health: string }) {
-  const config = HEALTH_CONFIG[health as keyof typeof HEALTH_CONFIG]
-  const circumference = 2 * Math.PI * 40
-  const offset = circumference - (score / 100) * circumference
-
-  return (
-    <div className="flex items-center gap-4">
-      <div className="relative w-24 h-24">
-        <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-          <circle cx="50" cy="50" r="40" fill="none" stroke="#f3f4f6" strokeWidth="10" />
-          <circle cx="50" cy="50" r="40" fill="none" strokeWidth="10"
-            stroke={config.color}
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-            style={{ transition: 'stroke-dashoffset 1s ease' }}
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-xl font-black text-gray-900" style={{ fontFamily: 'Cabinet Grotesk, sans-serif' }}>{score}</span>
-        </div>
-      </div>
-      <div>
-        <div className="text-lg font-black" style={{ color: config.color, fontFamily: 'Cabinet Grotesk, sans-serif' }}>{config.label}</div>
-        <div className="text-sm text-gray-500">{config.desc}</div>
-      </div>
-    </div>
-  )
-}
-
-// ─── MAIN MODULE ─────────────────────────────────────────────
-export default function NOVAIntelligenceModule() {
-  const [report, setReport] = useState<NOVAReport | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [scanning, setScanning] = useState(false)
-  const [activeTab, setActiveTab] = useState<'all' | Severity>('all')
-
-  const loadReport = async (fresh = false) => {
-    if (fresh) setScanning(true)
-    const res = await fetch(`/api/intelligence${fresh ? '?fresh=true' : ''}`)
-    if (res.ok) {
-      const data = await res.json()
-      setReport(data.report as NOVAReport)
-    }
-    setLoading(false)
-    setScanning(false)
-  }
-
-  useEffect(() => { loadReport() }, [])
-
-  if (loading) return (
-    <div className="h-full flex items-center justify-center">
-      <div className="text-center">
-        <div className="w-12 h-12 rounded-2xl bg-[#0a0a0a] flex items-center justify-center mx-auto mb-4">
-          <span className="text-white font-black text-xl" style={{ fontFamily: 'Cabinet Grotesk, sans-serif' }}>N</span>
-        </div>
-        <div className="font-semibold text-gray-700">NOVA is scanning your business...</div>
-        <div className="text-sm text-gray-400 mt-1">Checking all 8 modules simultaneously</div>
-        <div className="flex gap-1 justify-center mt-4">
-          {[0,1,2].map(i => <div key={i} className="w-2 h-2 bg-[#00a855] rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />)}
-        </div>
-      </div>
-    </div>
-  )
-
-  if (!report) return (
-    <div className="p-6">
-      <Card>
-        <div className="text-center py-8">
-          <div className="text-gray-400 mb-3">No intelligence report available</div>
-          <Button onClick={() => loadReport(true)} icon={RefreshCw}>Run First Scan</Button>
-        </div>
-      </Card>
-    </div>
-  )
-
-  const allSignals = [...report.criticalAlerts, ...report.warnings, ...report.watchItems, ...report.positiveSignals]
-  const displaySignals = activeTab === 'all' ? allSignals : allSignals.filter(s => s.severity === activeTab)
-
-  const tabs: { key: 'all' | Severity; label: string; count: number; color?: string }[] = [
-    { key: 'all', label: 'All', count: allSignals.length },
-    { key: 'CRITICAL', label: 'Critical', count: report.criticalAlerts.length, color: '#dc2626' },
-    { key: 'WARNING', label: 'Warnings', count: report.warnings.length, color: '#d97706' },
-    { key: 'WATCH', label: 'Watch', count: report.watchItems.length, color: '#2563eb' },
-    { key: 'POSITIVE', label: 'Positive', count: report.positiveSignals.length, color: '#00a855' },
-  ]
-
-  return (
-    <div className="h-full flex flex-col">
-      <PageHeader
-        title="NOVA Intelligence"
-        subtitle="Proactive monitoring across all 8 AI executives — problems detected before they become crises"
-        actions={
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">
-              Last scan: {new Date(report.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-            <Button size="sm" variant="secondary" icon={RefreshCw} loading={scanning} onClick={() => loadReport(true)}>
-              Rescan
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="flex-1 overflow-auto">
-        {/* Health overview */}
-        <div className="bg-[#0a0a0a] px-6 py-5">
-          <div className="max-w-6xl mx-auto">
-            <div className="flex items-start gap-8">
-              <HealthGauge score={report.healthScore} health={report.overallHealth} />
-
-              <div className="flex-1">
-                <div className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Executive Summary</div>
-                <p className="text-white/80 text-sm leading-relaxed mb-4">{report.executiveSummary}</p>
-
-                {/* Signal counts */}
-                <div className="flex gap-4">
-                  {[
-                    { label: 'Critical', count: report.criticalAlerts.length, color: '#dc2626' },
-                    { label: 'Warnings', count: report.warnings.length, color: '#d97706' },
-                    { label: 'Watch', count: report.watchItems.length, color: '#2563eb' },
-                    { label: 'Auto-fixable', count: report.autoFixCount, color: '#00a855' },
-                  ].map(item => (
-                    <div key={item.label} className="bg-white/5 rounded-xl px-3 py-2 text-center">
-                      <div className="font-black text-xl" style={{ color: item.color, fontFamily: 'Cabinet Grotesk, sans-serif' }}>{item.count}</div>
-                      <div className="text-white/40 text-xs">{item.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Today's Focus */}
-              <div className="w-72 bg-white/5 rounded-2xl p-4 flex-shrink-0">
-                <div className="flex items-center gap-2 mb-3">
-                  <Lightbulb size={14} className="text-[#00a855]" />
-                  <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">Today's focus</span>
-                </div>
-                <ol className="space-y-2">
-                  {report.todaysFocus.map((item, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-white/70 leading-relaxed">
-                      <span className="w-4 h-4 rounded-full bg-[#00a855]/20 text-[#00a855] text-[10px] font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
-                      {item}
-                    </li>
-                  ))}
-                </ol>
-                <div className="mt-3 pt-3 border-t border-white/10">
-                  <div className="text-xs text-white/30 font-medium mb-1">30-day outlook</div>
-                  <p className="text-xs text-white/50 leading-relaxed">{report.horizon30Days}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Top priority */}
-        {report.topPriority && (
-          <div className="px-6 py-4 bg-red-50 border-b border-red-100">
-            <div className="max-w-6xl mx-auto">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle size={13} className="text-red-600" />
-                <span className="text-xs font-bold text-red-600 uppercase tracking-wider">Top priority right now</span>
-              </div>
-              <SignalCard signal={report.topPriority} defaultOpen={true} />
-            </div>
-          </div>
-        )}
-
-        {/* Tabs + signal list */}
-        <div className="max-w-6xl mx-auto px-6 py-4">
-          {/* Tab bar */}
-          <div className="flex gap-2 mb-4 flex-wrap">
-            {tabs.map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                  activeTab === tab.key
-                    ? 'bg-gray-900 text-white'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                }`}
-              >
-                {tab.label}
-                {tab.count > 0 && (
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${activeTab === tab.key ? 'bg-white/20 text-white' : 'bg-white text-gray-600'}`}>
-                    {tab.count}
-                  </span>
-                )}
-              </button>
+        {messages.length <= 1 && (
+          <div style={{ padding: '0 20px 10px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {(SUGGESTED[activeExec.id] || []).map((p, i) => (
+              <button key={i} onClick={() => send(p)} style={{ padding: '5px 12px', borderRadius: 20, border: '1px solid #e5e7eb', background: 'white', fontSize: 12, color: '#374151', cursor: 'pointer' }}>{p}</button>
             ))}
           </div>
-
-          {/* Signal cards */}
-          {displaySignals.length === 0 ? (
-            <Card>
-              <div className="py-10 text-center">
-                <CheckCircle size={32} className="text-[#00a855] mx-auto mb-3" />
-                <div className="font-semibold text-gray-700">No {activeTab !== 'all' ? activeTab.toLowerCase() : ''} signals</div>
-                <p className="text-sm text-gray-400 mt-1">
-                  {activeTab === 'CRITICAL' ? 'No critical issues detected.' : `No ${activeTab.toLowerCase()} signals at this time.`}
-                </p>
-              </div>
-            </Card>
-          ) : (
-            <div className="space-y-2">
-              {displaySignals.map((signal, idx) => (
-                <SignalCard
-                  key={signal.id || idx}
-                  signal={signal}
-                  defaultOpen={signal.severity === 'CRITICAL' && idx === 0 && activeTab !== 'all'}
-                />
-              ))}
-            </div>
-          )}
+        )}
+        <div style={{ padding: '10px 20px 18px', background: 'white', borderTop: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', background: '#f9fafb', borderRadius: 10, padding: '8px 12px', border: '1px solid #e5e7eb' }}>
+            <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input) } }} placeholder={'Message ' + activeExec.name + '...'} rows={1} style={{ flex: 1, border: 'none', background: 'transparent', resize: 'none', outline: 'none', fontSize: 13, color: '#111', lineHeight: 1.5, maxHeight: 100, overflowY: 'auto' }} />
+            <button onClick={() => send(input)} disabled={!input.trim() || loading} style={{ width: 30, height: 30, borderRadius: 7, border: 'none', background: !input.trim() || loading ? '#e5e7eb' : activeExec.color, color: 'white', cursor: !input.trim() || loading ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Send size={13} />
+            </button>
+          </div>
+          <p style={{ fontSize: 11, color: '#9ca3af', marginTop: 5, textAlign: 'center' }}>Enter to send · Shift+Enter for new line · Actions require your approval</p>
         </div>
       </div>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
