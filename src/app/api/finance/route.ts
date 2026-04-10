@@ -57,9 +57,10 @@ export async function POST(req: NextRequest) {
       const invoiceNumber = 'INV-' + Date.now().toString().slice(-6)
       const invoice = await db.invoice.create({
         data: {
-          businessId: business.id,
-          invoiceNumber,
-          customerName,
+  businessId: business.id,
+  invoiceNumber,
+  number: invoiceNumber,
+  customerName,
           customerEmail,
           issueDate: new Date(),
           dueDate: dueDate ? new Date(dueDate) : null,
