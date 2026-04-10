@@ -55,23 +55,29 @@ export async function POST(req: NextRequest) {
       const { customerName, customerEmail, dueDate, lineItems, notes } = body
       const total = (lineItems || []).reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
       const invoiceNumber = 'INV-' + Date.now().toString().slice(-6)
-      const invoice = await db.invoice.create({
-        data: {
-  businessId: business.id,
-  invoiceNumber,
-  number: invoiceNumber,
-  customerName,
-          customerEmail,
-          issueDate: new Date(),
-          dueDate: dueDate ? new Date(dueDate) : null,
-          total,
-          status: 'open',
-          notes,
-          source: 'manual',
-        }
-      })
-      return NextResponse.json({ success: true, invoice })
+      if (action === 'create_invoice') {
+  const { customerName, customerEmail, dueDate, lineItems, notes } = body
+  const subtotal = (lineItems || []).reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
+  const total = subtotal
+  const invoiceNumber = 'INV-' + Date.now().toString().slice(-6)
+  const invoice = await db.invoice.create({
+    data: {
+      businessId: business.id,
+      number: invoiceNumber,
+      customerName,
+      customerEmail,
+      issueDate: new Date(),
+      dueDate: dueDate ? new Date(dueDate) : null,
+      subtotal,
+      total,
+      amountDue: total,
+      lineItems: lineItems || [],
+      status: 'DRAFT',
+      notes,
     }
+  })
+  return NextResponse.json({ success: true, invoice })
+}
     if (action === 'create_bill') {
       const { vendorName, dueDate, total } = body
       const billNumber = 'BILL-' + Date.now().toString().slice(-6)
