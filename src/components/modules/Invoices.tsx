@@ -256,15 +256,15 @@ export default function InvoicesModule() {
                 <span className="col-span-2">Amount</span>
               </div>
               {lineItems.map((item, i) => (
-                <div key={i} className="grid grid-cols-12 gap-2">
-                  <Input className="col-span-6" placeholder="Service description" value={item.description} onChange={setLineField(i, 'description')} />
-                  <Input className="col-span-2" type="number" value={item.qty} onChange={setLineField(i, 'qty')} />
-                  <Input className="col-span-2" type="number" placeholder="0.00" value={item.rate} onChange={setLineField(i, 'rate')} />
-                  <div className="col-span-2 flex items-center justify-center text-sm font-semibold text-gray-700">
-                    ${lineTotal(item).toFixed(2)}
-                  </div>
-                </div>
-              ))}
+  <div key={i} className="grid grid-cols-12 gap-2">
+    <Input className="col-span-6" placeholder="Service description" value={item.description} onChange={setLineField(i, 'description')} />
+    <Input className="col-span-2" type="number" value={item.qty} onChange={setLineField(i, 'qty')} />
+    <Input className="col-span-2" type="number" placeholder="0.00" value={item.rate} onChange={setLineField(i, 'rate')} />
+    <div className="col-span-2 flex items-center justify-center text-sm font-semibold text-gray-700">
+      ${lineTotal(item).toFixed(2)}
+    </div>
+  </div>
+))}
             </div>
             <Button size="xs" variant="ghost" className="mt-2" onClick={addLineItem}>+ Add line item</Button>
           </div>
