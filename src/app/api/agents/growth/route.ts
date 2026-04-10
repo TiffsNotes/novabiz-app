@@ -10,7 +10,6 @@ export async function GET() {
       const actions: string[] = []
       const now = new Date()
       const dayOfWeek = now.getDay()
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
       // Weekly content reminder on Mondays
       if (dayOfWeek === 1) {
@@ -29,58 +28,69 @@ export async function GET() {
         actions.push('Weekly content reminder created')
       }
 
-      // Check campaign performance
-      const activeCampaigns = await db.campaign.findMany({
-        where: {
-          businessId: business.id,
-          status: 'sent',
-          sentAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
-        },
-      }).catch(() => [])
-
-      if (activeCampaigns.length > 0) {
-        await db.inboxItem.create({
-          data: {
-            businessId: business.id,
-            type: 'campaign_review',
-            title: activeCampaigns.length + ' campaign(s) ready for performance review',
-            description: 'Recent campaigns have been running for 7 days. Review open rates, click rates, and conversions to optimize future campaigns.',
-            severity: 'info',
-            module: 'marketing',
-            actionRequired: false,
-            data: { campaignIds: activeCampaigns.map(c => c.id) },
-          },
-        }).catch(() => null)
-        actions.push('Campaign review reminder: ' + activeCampaigns.length + ' campaigns')
-      }
-
-      // Monthly marketing budget review
+      // Monthly marketing budget review on 1st of month
       if (now.getDate() === 1) {
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0)
+
         const monthlyAdSpend = await db.transaction.aggregate({
           where: {
             businessId: business.id,
-            type: 'expense',
-            category: 'Marketing',
-            date: { gte: startOfMonth },
+            amount: { lt: 0 },
+            date: { gte: startOfLastMonth, lte: endOfLastMonth },
           },
           _sum: { amount: true },
         }).catch(() => ({ _sum: { amount: 0 } }))
 
-        const spend = Math.abs((monthlyAdSpend._sum.amount as number) || 0)
+        const spend = Math.abs(Number(monthlyAdSpend._sum.amount) || 0)
 
         await db.inboxItem.create({
           data: {
             businessId: business.id,
             type: 'marketing_budget',
-            title: 'Monthly marketing spend: $' + (spend / 100).toFixed(0),
-            description: 'Review this months marketing spend and ROI. Ask NOVA Growth to analyze which channels are performing best and reallocate budget accordingly.',
+            title: 'Monthly marketing review: $' + (spend / 100).toFixed(0) + ' spent last month',
+            description: 'Review last months marketing spend and ROI. Ask NOVA Growth to analyze which channels performed best and reallocate budget.',
             severity: 'info',
             module: 'marketing',
             actionRequired: false,
-            data: { spend, month: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) },
+            data: { spend, month: startOfLastMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) },
           },
         }).catch(() => null)
-        actions.push('Monthly marketing budget review')
+        actions.push('Monthly marketing budget review created')
+      }
+
+      // Daily revenue check - flag if revenue is below average
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+
+      const [weekRevenue, yesterdayRevenue] = await Promise.all([
+        db.transaction.aggregate({
+          where: { businessId: business.id, amount: { gt: 0 }, date: { gte: sevenDaysAgo } },
+          _sum: { amount: true },
+        }).catch(() => ({ _sum: { amount: 0 } })),
+        db.transaction.aggregate({
+          where: { businessId: business.id, amount: { gt: 0 }, date: { gte: yesterday, lt: now } },
+          _sum: { amount: true },
+        }).catch(() => ({ _sum: { amount: 0 } })),
+      ])
+
+      const avgDailyRevenue = Math.abs(Number(weekRevenue._sum.amount) || 0) / 7
+      const todayRevenue = Math.abs(Number(yesterdayRevenue._sum.amount) || 0)
+
+      if (avgDailyRevenue > 0 && todayRevenue < avgDailyRevenue * 0.5) {
+        await db.inboxItem.create({
+          data: {
+            businessId: business.id,
+            type: 'revenue_alert',
+            title: 'Revenue below average yesterday',
+            description: 'Yesterday: $' + (todayRevenue / 100).toFixed(0) + ' vs 7-day avg: $' + (avgDailyRevenue / 100).toFixed(0) + '. Consider running a promotion or checking for operational issues.',
+            severity: 'warning',
+            module: 'marketing',
+            actionRequired: false,
+            data: { yesterdayRevenue: todayRevenue, avgDailyRevenue },
+          },
+        }).catch(() => null)
+        actions.push('Revenue alert: below average')
       }
 
       results.push({ business: business.name, actions })
