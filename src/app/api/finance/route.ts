@@ -11,44 +11,27 @@ export async function GET(req: NextRequest) {
     if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     const view = new URL(req.url).searchParams.get('view') || 'invoices'
     if (view === 'invoices') {
-if (action === 'create_invoice') {
-  const { customerName, customerEmail, dueDate, lineItems, notes } = body
-  const total = (lineItems || []).reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
-  const invoiceNumber = 'INV-' + Date.now().toString().slice(-6)
-  const invoice = await db.invoice.create({
-    data: {
-      businessId: business.id,
-      invoiceNumber,
-      customerName,
-      customerEmail,
-      issueDate: new Date(),
-      dueDate: dueDate ? new Date(dueDate) : null,
-      total,
-      status: 'open',
-      notes,
-      source: 'manual',
+      const invoices = await db.invoice.findMany({ where: { businessId: business.id }, orderBy: { createdAt: 'desc' }, take: 100 })
+      return NextResponse.json({ invoices })
     }
-  })
-  return NextResponse.json({ success: true, invoice })
-}
     if (view === 'bills') {
       const bills = await db.bill.findMany({ where: { businessId: business.id }, orderBy: { createdAt: 'desc' }, take: 100 })
       return NextResponse.json({ bills })
     }
     if (view === 'ar_stats') {
       const [total, overdue, collected] = await Promise.all([
-        db.invoice.aggregate({ where: { businessId: business.id, status: { in: ['open', 'partial'] } }, _sum: { balance: true } }),
-        db.invoice.aggregate({ where: { businessId: business.id, status: { in: ['open', 'partial'] }, dueDate: { lt: new Date() } }, _sum: { balance: true }, _count: true }),
-        db.invoice.aggregate({ where: { businessId: business.id, status: 'paid', updatedAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } }, _sum: { total: true } }),
+        db.invoice.aggregate({ where: { businessId: business.id, status: { in: ['open', 'partial'] } }, _sum: { total: true } }),
+        db.invoice.aggregate({ where: { businessId: business.id, status: { in: ['open', 'partial'] }, dueDate: { lt: new Date() } }, _sum: { total: true }, _count: true }),
+        db.invoice.aggregate({ where: { businessId: business.id, status: { in: ['paid'] }, updatedAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } }, _sum: { total: true } }),
       ])
-      return NextResponse.json({ totalOutstanding: total._sum.balance || 0, overdueAmount: overdue._sum.balance || 0, overdueCount: overdue._count || 0, collectedMTD: collected._sum.total || 0 })
+      return NextResponse.json({ totalAR: (total._sum.total || 0) * 100, overdue: (overdue._sum.total || 0) * 100, dueThisWeek: 0, paidThisMonth: (collected._sum.total || 0) * 100 })
     }
     if (view === 'ap_stats') {
       const [total, overdue] = await Promise.all([
-        db.bill.aggregate({ where: { businessId: business.id, status: { in: ['open', 'partial'] } }, _sum: { balance: true } }),
-        db.bill.aggregate({ where: { businessId: business.id, status: { in: ['open', 'partial'] }, dueDate: { lt: new Date() } }, _sum: { balance: true }, _count: true }),
+        db.bill.aggregate({ where: { businessId: business.id, status: { in: ['open', 'partial'] } }, _sum: { total: true } }),
+        db.bill.aggregate({ where: { businessId: business.id, status: { in: ['open', 'partial'] }, dueDate: { lt: new Date() } }, _sum: { total: true }, _count: true }),
       ])
-      return NextResponse.json({ totalPayable: total._sum.balance || 0, overdueAmount: overdue._sum.balance || 0, overdueCount: overdue._count || 0 })
+      return NextResponse.json({ totalAP: (total._sum.total || 0) * 100, overdue: (overdue._sum.total || 0) * 100, dueThisWeek: 0, paidThisMonth: 0 })
     }
     if (view === 'tax_filings') {
       return NextResponse.json({ filings: [], nextDue: null })
@@ -70,23 +53,47 @@ export async function POST(req: NextRequest) {
     const { action } = body
     if (action === 'create_invoice') {
       const { customerName, customerEmail, dueDate, lineItems, notes } = body
-      const total = lineItems.reduce((sum: number, item: any) => sum + (item.quantity * item.unitPrice), 0)
+      const total = (lineItems || []).reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
       const invoiceNumber = 'INV-' + Date.now().toString().slice(-6)
-      const invoice = await db.invoice.create({ data: { businessId: business.id, invoiceNumber, customerName, customerEmail, issueDate: new Date(), dueDate: new Date(dueDate), total, balance: total, status: 'open', notes, source: 'manual' } })
+      const invoice = await db.invoice.create({
+        data: {
+          businessId: business.id,
+          invoiceNumber,
+          customerName,
+          customerEmail,
+          issueDate: new Date(),
+          dueDate: dueDate ? new Date(dueDate) : null,
+          total,
+          status: 'open',
+          notes,
+          source: 'manual',
+        }
+      })
       return NextResponse.json({ success: true, invoice })
     }
     if (action === 'create_bill') {
       const { vendorName, dueDate, total } = body
       const billNumber = 'BILL-' + Date.now().toString().slice(-6)
-      const bill = await db.bill.create({ data: { businessId: business.id, billNumber, vendorName, issueDate: new Date(), dueDate: new Date(dueDate), total: parseFloat(total), balance: parseFloat(total), status: 'open', source: 'manual' } })
+      const bill = await db.bill.create({
+        data: {
+          businessId: business.id,
+          billNumber,
+          vendorName,
+          issueDate: new Date(),
+          dueDate: new Date(dueDate),
+          total: parseFloat(total),
+          status: 'open',
+          source: 'manual',
+        }
+      })
       return NextResponse.json({ success: true, bill })
     }
     if (action === 'mark_paid') {
       const { type, id: recordId } = body
       if (type === 'invoice') {
-        await db.invoice.update({ where: { id: recordId }, data: { status: 'paid', balance: 0 } })
+        await db.invoice.update({ where: { id: recordId }, data: { status: 'paid' } })
       } else {
-        await db.bill.update({ where: { id: recordId }, data: { status: 'paid', balance: 0 } })
+        await db.bill.update({ where: { id: recordId }, data: { status: 'paid' } })
       }
       return NextResponse.json({ success: true })
     }
