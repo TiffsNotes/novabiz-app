@@ -353,7 +353,7 @@ export default function InvoicesModule() {
                   </div>
                   {editLineItems.map((item, i) => (
                     <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                      <div className="col-span-5"><Input placeholder="Description" value={item.description} onChange={setEditLineField(i, 'description')} /></div>
+                      <div className="col-span-5"><Input placeholder="Description" value={item.description} onChange={e => { e.target.value = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1); setEditLineField(i, 'description')(e) }} /></div>
                       <div className="col-span-2"><Input placeholder="SKU" value={(item as any).sku || ''} onChange={e => setEditLineItems(prev => prev.map((it, idx) => idx === i ? { ...it, sku: e.target.value } : it))} /></div>
                       <div className="col-span-2"><Input type="number" placeholder="1" value={item.qty} onChange={setEditLineField(i, 'qty')} /></div>
                       <div className="col-span-2"><Input type="number" placeholder="0.00" value={item.rate} onChange={setEditLineField(i, 'rate')} /></div>
