@@ -72,7 +72,7 @@ export async function GET() {
         })
 
         for (const anomaly of anomalies) {
-          await db.inboxItem.create({
+          await db.agentAlert.create({
             data: {
               businessId: business.id,
               type: 'anomaly',

@@ -38,7 +38,7 @@ export async function GET() {
       if (avgDailyNet < 0 && currentCash > 0) {
         const runwayDays = Math.floor(currentCash / Math.abs(avgDailyNet))
         if (runwayDays < 90) {
-          await db.inboxItem.create({
+          await db.agentAlert.create({
             data: {
               businessId: business.id,
               type: 'cash_runway',
@@ -67,7 +67,7 @@ export async function GET() {
 
       if (overdueInvoices.length > 0) {
         const totalOverdue = overdueInvoices.reduce((sum: number, inv: any) => sum + (inv.amountDue || 0), 0)
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'collections',
@@ -96,7 +96,7 @@ export async function GET() {
 
       if (upcomingBills.length > 0) {
         const totalDue = upcomingBills.reduce((sum: number, b: any) => sum + (b.amountDue || 0), 0)
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'bills_due',

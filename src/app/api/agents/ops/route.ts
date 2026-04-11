@@ -22,7 +22,7 @@ export async function GET() {
       }).catch(() => [])
 
       for (const leave of pendingLeave) {
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'leave_approval',
@@ -48,7 +48,7 @@ export async function GET() {
       }).catch(() => [])
 
       for (const project of overdueProjects) {
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'overdue_project',
@@ -75,7 +75,7 @@ export async function GET() {
       ])
 
       if (newThisWeek > 0) {
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'headcount_update',

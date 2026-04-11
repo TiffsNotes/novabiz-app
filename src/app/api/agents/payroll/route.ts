@@ -26,7 +26,7 @@ export async function GET() {
 
       // Bi-weekly payroll reminder (1st and 15th)
       if (dayOfMonth === 1 || dayOfMonth === 15) {
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'payroll_run',
@@ -48,7 +48,7 @@ export async function GET() {
       // Check for employees missing bank info
       const missingBankInfo = employees.filter(e => !e.bankAccountNumber)
       if (missingBankInfo.length > 0) {
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'missing_bank_info',
@@ -65,7 +65,7 @@ export async function GET() {
 
       // Year-end W2 reminder in December
       if (now.getMonth() === 11) {
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'w2_reminder',

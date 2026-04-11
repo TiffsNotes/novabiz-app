@@ -20,7 +20,7 @@ export async function GET() {
       }).catch(() => [])
 
       for (const item of lowStockItems) {
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'reorder',
@@ -46,7 +46,7 @@ export async function GET() {
       }).catch(() => [])
 
       for (const item of outOfStock) {
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'out_of_stock',
@@ -72,7 +72,7 @@ export async function GET() {
       }).catch(() => [])
 
       for (const order of overdueOrders) {
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'overdue_fulfillment',

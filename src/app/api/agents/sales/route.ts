@@ -22,7 +22,7 @@ export async function GET() {
       })
 
       for (const deal of staleDeals) {
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'follow_up',
@@ -50,7 +50,7 @@ export async function GET() {
       })
 
       for (const deal of closingSoon) {
-        await db.inboxItem.create({
+        await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'closing_soon',
