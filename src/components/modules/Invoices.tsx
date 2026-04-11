@@ -136,6 +136,7 @@ export default function InvoicesModule() {
           notes: form.notes,
           lineItems: lineItems.filter(i => i.description || i.rate).map(i => ({
             description: i.description,
+            sku: (i as any).sku || '',
             quantity: parseFloat(i.qty) || 1,
             unitPrice: parseFloat(i.rate) || 0,
           })),
@@ -451,14 +452,16 @@ export default function InvoicesModule() {
             <div className="text-xs font-medium text-gray-500 mb-2">Line Items</div>
             <div className="space-y-2">
               <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 px-2">
-                <span className="col-span-6">Description</span>
+                <span className="col-span-4">Description</span>
+                <span className="col-span-2">SKU</span>
                 <span className="col-span-2">Qty</span>
-                <span className="col-span-2">Rate</span>
+                <span className="col-span-2">Price</span>
                 <span className="col-span-2">Amount</span>
               </div>
               {lineItems.map((item, i) => (
                 <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                  <div className="col-span-6"><Input placeholder="Service description" value={item.description} onChange={setLineField(i, 'description')} /></div>
+                  <div className="col-span-4"><Input placeholder="Service description" value={item.description} onChange={e => { e.target.value = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1); setLineField(i, 'description')(e) }} /></div>
+                  <div className="col-span-2"><Input placeholder="SKU" value={(item as any).sku || ''} onChange={e => setLineItems(prev => prev.map((it, idx) => idx === i ? { ...it, sku: e.target.value } : it))} /></div>
                   <div className="col-span-2"><Input type="number" value={item.qty} onChange={setLineField(i, 'qty')} /></div>
                   <div className="col-span-2"><Input type="number" placeholder="0.00" value={item.rate} onChange={setLineField(i, 'rate')} /></div>
                   <div className="col-span-2 flex items-center justify-center text-sm font-semibold text-gray-700">${lineTotal(item).toFixed(2)}</div>
