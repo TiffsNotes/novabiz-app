@@ -1488,6 +1488,7 @@ enum Urgency {
   NORMAL
   HIGH
   CRITICAL
+}
 model AgentAlert {
   id             String    @id @default(cuid())
   businessId     String
@@ -1508,5 +1509,4 @@ model AgentAlert {
   @@index([businessId, dismissed])
   @@index([businessId, module])
   @@map("agent_alerts")
-}
 }
