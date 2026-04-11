@@ -4,6 +4,7 @@ import { Plus, Send, CheckCircle, AlertTriangle, Download, ExternalLink, Trash2 
 import { PageHeader, Card, StatCard, Badge, Table, Tabs, Button, Modal, Input, EmptyState } from '@/components/ui'
 
 type CustomField = { label: string; value: string }
+type EditLineItem = { description: string; qty: string; rate: string }
 type Invoice = { id: string; number: string; client: string; email?: string; amount: number; amountDue: number; status: string; issueDate: string; dueDate?: string; currency: string; notes?: string; customFields?: CustomField[] }
 type Bill = { id: string; number: string; vendor: string; amount: number; amountPaid: number; status: string; billDate: string; dueDate?: string }
 type ARStats = { totalAR: number; overdue: number; dueThisWeek: number; paidThisMonth: number }
@@ -31,7 +32,7 @@ export default function InvoicesModule() {
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null)
   const [editMode, setEditMode] = useState(false)
   const [customFields, setCustomFields] = useState<CustomField[]>([])
-  const [editLineItems, setEditLineItems] = useState<LineItem[]>([])
+  const [editLineItems, setEditLineItems] = useState<EditLineItem[]>([{ description: '', qty: '1', rate: '' }])
   const [form, setForm] = useState(defaultForm)
   const [lineItems, setLineItems] = useState<LineItem[]>([{ description: '', qty: '1', rate: '' }])
   const [submitting, setSubmitting] = useState(false)
@@ -41,16 +42,20 @@ export default function InvoicesModule() {
     setForm(f => ({ ...f, [k]: e.target.value }))
   const setLineField = (i: number, k: keyof LineItem) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setLineItems(items => items.map((item, idx) => idx === i ? { ...item, [k]: e.target.value } : item))
+  const setEditLineField = (i: number, k: keyof EditLineItem) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setEditLineItems(items => items.map((item, idx) => idx === i ? { ...item, [k]: e.target.value } : item))
   const addLineItem = () => setLineItems(items => [...items, { description: '', qty: '1', rate: '' }])
-  const lineTotal = (item: LineItem) => (parseFloat(item.qty) || 0) * (parseFloat(item.rate) || 0)
+  const addEditLineItem = () => setEditLineItems(items => [...items, { description: '', qty: '1', rate: '' }])
+  const lineTotal = (item: LineItem | EditLineItem) => (parseFloat(item.qty) || 0) * (parseFloat(item.rate) || 0)
   const invoiceTotal = lineItems.reduce((s, item) => s + lineTotal(item), 0)
+  const editInvoiceTotal = editLineItems.reduce((s, item) => s + lineTotal(item), 0)
   const resetForm = () => { setForm(defaultForm); setLineItems([{ description: '', qty: '1', rate: '' }]); setNewInvoice(false) }
 
   const openEdit = (invoice: Invoice) => {
     setEditInvoice(invoice)
     setEditMode(false)
     setCustomFields(invoice.customFields || [])
-    setEditLineItems([])
+    setEditLineItems([{ description: '', qty: '1', rate: '' }])
   }
 
   const handleViewPDF = (invoice: Invoice) => {
@@ -91,6 +96,11 @@ export default function InvoicesModule() {
           issueDate: editInvoice.issueDate,
           notes: editInvoice.notes,
           customFields,
+          lineItems: editLineItems.filter(i => i.description || i.rate).map(i => ({
+            description: i.description,
+            quantity: parseFloat(i.qty) || 1,
+            unitPrice: parseFloat(i.rate) || 0,
+          })),
         }),
       })
       if (res.ok) {
@@ -282,10 +292,12 @@ export default function InvoicesModule() {
         )}
       </div>
 
-      {/* Invoice Detail Modal */}
-      <Modal open={!!editInvoice} onClose={() => { setEditInvoice(null); setEditMode(false) }} title={`Invoice ${editInvoice?.number || ''}`} width="max-w-2xl">
+      {/* Invoice Detail / Edit Modal */}
+      <Modal open={!!editInvoice} onClose={() => { setEditInvoice(null); setEditMode(false) }} title={editMode ? `Editing ${editInvoice?.number || ''}` : `Invoice ${editInvoice?.number || ''}`} width="max-w-2xl">
         {editInvoice && (
-          <div className="p-6 space-y-4">
+          <div className="p-6 space-y-5">
+
+            {/* Header fields */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="text-xs font-medium text-gray-500 mb-1">Invoice Number</div>
@@ -324,14 +336,50 @@ export default function InvoicesModule() {
               </div>
             </div>
 
-            {/* Custom Fields */}
+            {/* Line Items */}
             {editMode && (
               <div>
-                <div className="text-xs font-medium text-gray-500 mb-2">Custom Fields</div>
+                <div className="text-xs font-medium text-gray-500 mb-2">Line Items</div>
+                <div className="space-y-2">
+                  <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 px-1">
+                    <span className="col-span-5">Description</span>
+                    <span className="col-span-2">Item #</span>
+                    <span className="col-span-2">Qty</span>
+                    <span className="col-span-2">Price</span>
+                    <span className="col-span-1"></span>
+                  </div>
+                  {editLineItems.map((item, i) => (
+                    <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-5"><Input placeholder="Description" value={item.description} onChange={setEditLineField(i, 'description')} /></div>
+                      <div className="col-span-2"><Input placeholder="SKU" value={(item as any).sku || ''} onChange={e => setEditLineItems(prev => prev.map((it, idx) => idx === i ? { ...it, sku: e.target.value } : it))} /></div>
+                      <div className="col-span-2"><Input type="number" placeholder="1" value={item.qty} onChange={setEditLineField(i, 'qty')} /></div>
+                      <div className="col-span-2"><Input type="number" placeholder="0.00" value={item.rate} onChange={setEditLineField(i, 'rate')} /></div>
+                      <div className="col-span-1 flex justify-center">
+                        <button onClick={() => setEditLineItems(prev => prev.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <Button size="xs" variant="ghost" onClick={addEditLineItem}>+ Add line item</Button>
+                  <div className="text-sm font-bold text-gray-800">Total: ${editInvoiceTotal.toFixed(2)}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Custom Fields */}
+            <div>
+              <div className="text-xs font-medium text-gray-500 mb-2">Custom Fields</div>
+              {customFields.length === 0 && !editMode && (
+                <div className="text-xs text-gray-400">No custom fields. Click Edit Invoice to add.</div>
+              )}
+              {editMode ? (
                 <div className="space-y-2">
                   {customFields.map((field, i) => (
                     <div key={i} className="flex gap-2 items-center">
-                      <Input placeholder="Field label" value={field.label} onChange={e => setCustomFields(prev => prev.map((f, idx) => idx === i ? { ...f, label: e.target.value } : f))} />
+                      <Input placeholder="Field label (e.g. PO Number)" value={field.label} onChange={e => setCustomFields(prev => prev.map((f, idx) => idx === i ? { ...f, label: e.target.value } : f))} />
                       <Input placeholder="Value" value={field.value} onChange={e => setCustomFields(prev => prev.map((f, idx) => idx === i ? { ...f, value: e.target.value } : f))} />
                       <button onClick={() => setCustomFields(prev => prev.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600 flex-shrink-0">
                         <Trash2 size={14} />
@@ -340,21 +388,21 @@ export default function InvoicesModule() {
                   ))}
                   <Button size="xs" variant="ghost" onClick={() => setCustomFields(prev => [...prev, { label: '', value: '' }])}>+ Add custom field</Button>
                 </div>
-              </div>
-            )}
-
-            {/* Show custom fields in view mode */}
-            {!editMode && customFields.length > 0 && (
-              <div className="grid grid-cols-2 gap-3">
-                {customFields.map((field, i) => (
-                  <div key={i}>
-                    <div className="text-xs font-medium text-gray-500 mb-1">{field.label}</div>
-                    <div className="text-sm text-gray-900">{field.value}</div>
+              ) : (
+                customFields.length > 0 && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {customFields.map((field, i) => (
+                      <div key={i}>
+                        <div className="text-xs font-medium text-gray-500 mb-1">{field.label}</div>
+                        <div className="text-sm text-gray-900">{field.value}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
+                )
+              )}
+            </div>
 
+            {/* Action Buttons */}
             <div className="flex gap-2 pt-2 flex-wrap">
               {!editMode ? (
                 <>
