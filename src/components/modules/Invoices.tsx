@@ -151,8 +151,8 @@ export default function InvoicesModule() {
         const err = await res.json().catch(() => ({}))
         alert('Failed to save invoice: ' + (err.error || res.status))
       }
-    } catch {
-      alert('Network error.')
+    } catch (e: any) {
+      alert('Error: ' + (e?.message || 'Unknown error'))
     } finally {
       setSubmitting(false)
     }
