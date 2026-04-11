@@ -12,40 +12,27 @@ export async function GET(req: NextRequest) {
     if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const { searchParams } = new URL(req.url)
-    const status = searchParams.get('status') || 'pending'
+    const showDismissed = searchParams.get('dismissed') === 'true'
     const module = searchParams.get('module')
 
-    const where: any = { businessId: business.id }
-    if (status !== 'all') where.status = status
+    const where: any = { businessId: business.id, dismissed: showDismissed }
     if (module) where.module = module
 
-    const [items, counts] = await Promise.all([
-      db.inboxItem.findMany({
-        where,
-        orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }],
-        take: 100,
-      }),
-      db.inboxItem.groupBy({
-        by: ['severity'],
-        where: { businessId: business.id, status: 'pending' },
-        _count: true,
-      }),
-    ])
-
-    const severityCounts = counts.reduce((acc: any, c) => {
-      acc[c.severity] = c._count
-      return acc
-    }, {})
-
-    return NextResponse.json({
-      items,
-      counts: {
-        total: items.length,
-        critical: severityCounts.critical || 0,
-        warning: severityCounts.warning || 0,
-        info: severityCounts.info || 0,
-      },
+    const items = await db.agentAlert.findMany({
+      where,
+      orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }],
+      take: 100,
     })
+
+    const counts = {
+      total: items.length,
+      critical: items.filter(i => i.severity === 'critical').length,
+      warning: items.filter(i => i.severity === 'warning').length,
+      info: items.filter(i => i.severity === 'info').length,
+      actionRequired: items.filter(i => i.actionRequired).length,
+    }
+
+    return NextResponse.json({ items, counts })
   } catch (err: any) {
     console.error('Inbox API error:', err)
     return NextResponse.json({ error: err.message }, { status: 500 })
@@ -61,36 +48,20 @@ export async function POST(req: NextRequest) {
     const business = await db.business.findFirst({ where: { clerkOrgId: id } })
     if (!business) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    const { action, itemId, resolution } = await req.json()
+    const { action, itemId } = await req.json()
 
-    if (action === 'approve') {
-      await db.inboxItem.update({
+    if (action === 'approve' || action === 'dismiss') {
+      await db.agentAlert.update({
         where: { id: itemId },
-        data: { status: 'approved', resolvedAt: new Date(), resolution },
-      })
-      return NextResponse.json({ success: true })
-    }
-
-    if (action === 'dismiss') {
-      await db.inboxItem.update({
-        where: { id: itemId },
-        data: { status: 'dismissed', resolvedAt: new Date(), resolution },
-      })
-      return NextResponse.json({ success: true })
-    }
-
-    if (action === 'snooze') {
-      await db.inboxItem.update({
-        where: { id: itemId },
-        data: { status: 'snoozed', snoozedUntil: new Date(Date.now() + 24 * 60 * 60 * 1000) },
+        data: { dismissed: true, resolvedAt: new Date() },
       })
       return NextResponse.json({ success: true })
     }
 
     if (action === 'clear_all') {
-      await db.inboxItem.updateMany({
-        where: { businessId: business.id, status: 'pending', actionRequired: false },
-        data: { status: 'dismissed', resolvedAt: new Date() },
+      await db.agentAlert.updateMany({
+        where: { businessId: business.id, dismissed: false, actionRequired: false },
+        data: { dismissed: true, resolvedAt: new Date() },
       })
       return NextResponse.json({ success: true })
     }
