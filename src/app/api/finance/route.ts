@@ -72,18 +72,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, invoice })
     }
     if (action === 'update_invoice') {
-      const { id: invoiceId, dueDate, issueDate, notes, customerName, customerEmail, customFields, lineItems: newLineItems } = body
+      const { id: invoiceId, dueDate, issueDate, notes, customFields, lineItems: newLineItems } = body
       const updateData: any = {
         dueDate: dueDate ? new Date(dueDate) : undefined,
         issueDate: issueDate ? new Date(issueDate) : undefined,
         notes,
       }
-      if (customerName) updateData.contactName = customerName
-      if (customerEmail) updateData.contactEmail = customerEmail
-      if (customFields) updateData.customFields = customFields
+      if (customFields !== undefined) updateData.notes = (notes || '') + (customFields.length > 0 ? '\n\nCustom Fields:\n' + customFields.map((f: any) => f.label + ': ' + f.value).join('\n') : '')
       if (newLineItems && newLineItems.length > 0) {
-        const subtotal = newLineItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0)
-        updateData.lineItems = newLineItems
+        const subtotal = newLineItems.reduce((s: number, i: any) => s + (i.quantity * i.unitPrice), 0)
         updateData.subtotal = subtotal
         updateData.total = subtotal
         updateData.amountDue = subtotal
