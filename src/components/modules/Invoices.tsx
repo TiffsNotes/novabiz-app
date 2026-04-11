@@ -132,6 +132,7 @@ export default function InvoicesModule() {
           action: 'create_invoice',
           customerName: form.client,
           customerEmail: form.email,
+          invoiceNumber: form.number || undefined,
           dueDate: form.dueDate,
           notes: form.notes,
           lineItems: lineItems.filter(i => i.description || i.rate).map(i => ({

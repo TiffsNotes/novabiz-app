@@ -59,9 +59,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { action } = body
     if (action === 'create_invoice') {
-      const { customerName, customerEmail, dueDate, lineItems, notes } = body
+      const { customerName, customerEmail, dueDate, lineItems, notes, invoiceNumber: customNumber } = body
       const subtotal = (lineItems || []).reduce((sum: number, item: any) => sum + ((item.quantity || 0) * (item.unitPrice || 0)), 0)
-      const invoiceNumber = 'INV-' + Date.now().toString().slice(-6)
+      const settings = (business.settings as any) || {}
+      const nextNum = settings.nextInvoiceNumber || 1
+      const prefix = settings.invoicePrefix || 'INV'
+      const invoiceNumber = customNumber || (prefix + '-' + String(nextNum).padStart(4, '0'))
+      await db.business.update({ where: { id: business.id }, data: { settings: { ...settings, nextInvoiceNumber: nextNum + 1 } } })
       const invoice = await db.invoice.create({
         data: {
           businessId: business.id,
