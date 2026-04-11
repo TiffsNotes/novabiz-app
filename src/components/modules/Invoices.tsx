@@ -14,12 +14,9 @@ const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-US', { mo
 const isOverdue = (d?: string) => d ? new Date(d) < new Date() : false
 
 const defaultForm = {
-  client: '',
-  email: '',
-  number: '',
+  client: '', email: '', number: '',
   issueDate: new Date().toISOString().split('T')[0],
-  dueDate: '',
-  notes: '',
+  dueDate: '', notes: '',
 }
 
 export default function InvoicesModule() {
@@ -31,6 +28,7 @@ export default function InvoicesModule() {
   const [loading, setLoading] = useState(true)
   const [newInvoice, setNewInvoice] = useState(false)
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null)
+  const [editMode, setEditMode] = useState(false)
   const [form, setForm] = useState(defaultForm)
   const [lineItems, setLineItems] = useState<LineItem[]>([{ description: '', qty: '1', rate: '' }])
   const [submitting, setSubmitting] = useState(false)
@@ -38,21 +36,12 @@ export default function InvoicesModule() {
 
   const setField = (k: keyof typeof defaultForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }))
-
   const setLineField = (i: number, k: keyof LineItem) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setLineItems(items => items.map((item, idx) => idx === i ? { ...item, [k]: e.target.value } : item))
-
   const addLineItem = () => setLineItems(items => [...items, { description: '', qty: '1', rate: '' }])
-
   const lineTotal = (item: LineItem) => (parseFloat(item.qty) || 0) * (parseFloat(item.rate) || 0)
-
   const invoiceTotal = lineItems.reduce((s, item) => s + lineTotal(item), 0)
-
-  const resetForm = () => {
-    setForm(defaultForm)
-    setLineItems([{ description: '', qty: '1', rate: '' }])
-    setNewInvoice(false)
-  }
+  const resetForm = () => { setForm(defaultForm); setLineItems([{ description: '', qty: '1', rate: '' }]); setNewInvoice(false) }
 
   const handleViewPDF = (invoice: Invoice) => {
     window.open('/api/invoices/' + invoice.id + '/pdf', '_blank')
@@ -79,6 +68,34 @@ export default function InvoicesModule() {
     }
   }
 
+  const handleSaveEdit = async () => {
+    if (!editInvoice) return
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/finance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_invoice',
+          id: editInvoice.id,
+          customerName: editInvoice.client,
+          dueDate: editInvoice.dueDate,
+          notes: editInvoice.notes,
+        }),
+      })
+      if (res.ok) {
+        setInvoices(prev => prev.map(i => i.id === editInvoice.id ? editInvoice : i))
+        setEditMode(false)
+      } else {
+        alert('Failed to update invoice.')
+      }
+    } catch {
+      alert('Network error.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const handleSubmit = async (send: boolean) => {
     setSubmitting(true)
     try {
@@ -88,13 +105,11 @@ export default function InvoicesModule() {
         customerEmail: form.email,
         dueDate: form.dueDate,
         notes: form.notes,
-        lineItems: lineItems
-          .filter(i => i.description || i.rate)
-          .map(i => ({
-            description: i.description,
-            quantity: parseFloat(i.qty) || 1,
-            unitPrice: parseFloat(i.rate) || 0,
-          })),
+        lineItems: lineItems.filter(i => i.description || i.rate).map(i => ({
+          description: i.description,
+          quantity: parseFloat(i.qty) || 1,
+          unitPrice: parseFloat(i.rate) || 0,
+        })),
       }
       const res = await fetch('/api/finance', {
         method: 'POST',
@@ -106,10 +121,10 @@ export default function InvoicesModule() {
         setInvoices(prev => [created.invoice, ...prev])
         resetForm()
       } else {
-        alert('Failed to save invoice. Please try again.')
+        alert('Failed to save invoice.')
       }
     } catch {
-      alert('Network error. Please try again.')
+      alert('Network error.')
     } finally {
       setSubmitting(false)
     }
@@ -127,7 +142,7 @@ export default function InvoicesModule() {
         setEditInvoice(null)
       }
     } catch {
-      alert('Network error. Please try again.')
+      alert('Network error.')
     }
   }
 
@@ -188,21 +203,18 @@ export default function InvoicesModule() {
         {tab === 'ar' && (
           <Card padding={false}>
             <Table<Invoice>
-              onRowClick={(row) => setEditInvoice(row)}
+              onRowClick={(row) => { setEditInvoice(row); setEditMode(false) }}
               columns={[
                 { key: 'number', header: 'Invoice #', render: r => <span className="font-mono text-sm font-medium text-gray-700">{r.number}</span> },
                 { key: 'client', header: 'Client', render: r => <span className="font-medium text-gray-900">{r.client || '—'}</span> },
                 { key: 'amount', header: 'Amount', render: r => <span className="font-semibold tabular-nums">{fmt(r.amount)}</span> },
                 { key: 'amountDue', header: 'Balance Due', render: r => (
-                  <span className={`font-bold tabular-nums ${r.amountDue > 0 ? 'text-red-600' : 'text-[#00a855]'}`}>
-                    {fmt(r.amountDue)}
-                  </span>
+                  <span className={`font-bold tabular-nums ${r.amountDue > 0 ? 'text-red-600' : 'text-[#00a855]'}`}>{fmt(r.amountDue)}</span>
                 )},
                 { key: 'issueDate', header: 'Issued', render: r => <span className="text-sm text-gray-500">{fmtDate(r.issueDate)}</span> },
                 { key: 'dueDate', header: 'Due', render: r => (
                   <span className={`text-sm ${isOverdue(r.dueDate) && r.status !== 'PAID' ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
-                    {fmtDate(r.dueDate)}
-                    {isOverdue(r.dueDate) && r.status !== 'PAID' && ' ⚠'}
+                    {fmtDate(r.dueDate)}{isOverdue(r.dueDate) && r.status !== 'PAID' && ' ⚠'}
                   </span>
                 )},
                 { key: 'status', header: 'Status', render: r => (
@@ -227,9 +239,7 @@ export default function InvoicesModule() {
                 { key: 'amountPaid', header: 'Paid', render: r => <span className="tabular-nums text-gray-600">{fmt(r.amountPaid)}</span> },
                 { key: 'billDate', header: 'Date', render: r => <span className="text-sm text-gray-500">{fmtDate(r.billDate)}</span> },
                 { key: 'dueDate', header: 'Due', render: r => (
-                  <span className={`text-sm ${isOverdue(r.dueDate) && r.status !== 'paid' ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
-                    {fmtDate(r.dueDate)}
-                  </span>
+                  <span className={`text-sm ${isOverdue(r.dueDate) && r.status !== 'paid' ? 'text-red-600 font-medium' : 'text-gray-500'}`}>{fmtDate(r.dueDate)}</span>
                 )},
                 { key: 'status', header: 'Status', render: r => (
                   <Badge variant={r.status === 'paid' ? 'green' : r.status === 'approved' ? 'blue' : 'gray'}>{r.status}</Badge>
@@ -244,20 +254,18 @@ export default function InvoicesModule() {
         {tab === 'aging' && (
           <Card>
             <h3 className="font-bold text-gray-900 mb-4" style={{ fontFamily: 'Cabinet Grotesk, sans-serif' }}>AR Aging Summary</h3>
-            <div className="grid grid-cols-5 gap-3 mb-6">
+            <div className="grid grid-cols-5 gap-3">
               {[
                 { label: 'Current', days: '0 days', color: '#00a855', value: invoices.filter(i => !isOverdue(i.dueDate) && i.status !== 'PAID').reduce((s, i) => s + i.amountDue, 0) },
-                { label: '1–30 days', days: 'overdue', color: '#d97706', value: overdueInvoices.filter(i => { const d = new Date(i.dueDate || ''); return Math.floor((Date.now() - d.getTime()) / 86400000) <= 30 }).reduce((s, i) => s + i.amountDue, 0) },
-                { label: '31–60 days', days: 'overdue', color: '#ef4444', value: overdueInvoices.filter(i => { const d = new Date(i.dueDate || ''); const age = Math.floor((Date.now() - d.getTime()) / 86400000); return age > 30 && age <= 60 }).reduce((s, i) => s + i.amountDue, 0) },
-                { label: '61–90 days', days: 'overdue', color: '#dc2626', value: overdueInvoices.filter(i => { const d = new Date(i.dueDate || ''); const age = Math.floor((Date.now() - d.getTime()) / 86400000); return age > 60 && age <= 90 }).reduce((s, i) => s + i.amountDue, 0) },
-                { label: '90+ days', days: 'overdue', color: '#991b1b', value: overdueInvoices.filter(i => { const d = new Date(i.dueDate || ''); return Math.floor((Date.now() - d.getTime()) / 86400000) > 90 }).reduce((s, i) => s + i.amountDue, 0) },
+                { label: '1–30 days', days: 'overdue', color: '#d97706', value: overdueInvoices.filter(i => { const age = Math.floor((Date.now() - new Date(i.dueDate || '').getTime()) / 86400000); return age <= 30 }).reduce((s, i) => s + i.amountDue, 0) },
+                { label: '31–60 days', days: 'overdue', color: '#ef4444', value: overdueInvoices.filter(i => { const age = Math.floor((Date.now() - new Date(i.dueDate || '').getTime()) / 86400000); return age > 30 && age <= 60 }).reduce((s, i) => s + i.amountDue, 0) },
+                { label: '61–90 days', days: 'overdue', color: '#dc2626', value: overdueInvoices.filter(i => { const age = Math.floor((Date.now() - new Date(i.dueDate || '').getTime()) / 86400000); return age > 60 && age <= 90 }).reduce((s, i) => s + i.amountDue, 0) },
+                { label: '90+ days', days: 'overdue', color: '#991b1b', value: overdueInvoices.filter(i => Math.floor((Date.now() - new Date(i.dueDate || '').getTime()) / 86400000) > 90).reduce((s, i) => s + i.amountDue, 0) },
               ].map(bucket => (
                 <div key={bucket.label} className="text-center p-4 rounded-xl bg-gray-50 border border-black/[0.07]">
                   <div className="text-xs text-gray-400 mb-1">{bucket.label}</div>
                   <div className="text-xs text-gray-400 mb-2">{bucket.days}</div>
-                  <div className="font-black text-lg" style={{ color: bucket.value > 0 ? bucket.color : '#9ca3af', fontFamily: 'Cabinet Grotesk, sans-serif' }}>
-                    {fmt(bucket.value)}
-                  </div>
+                  <div className="font-black text-lg" style={{ color: bucket.value > 0 ? bucket.color : '#9ca3af', fontFamily: 'Cabinet Grotesk, sans-serif' }}>{fmt(bucket.value)}</div>
                 </div>
               ))}
             </div>
@@ -266,7 +274,7 @@ export default function InvoicesModule() {
       </div>
 
       {/* Invoice Detail Modal */}
-      <Modal open={!!editInvoice} onClose={() => setEditInvoice(null)} title={`Invoice ${editInvoice?.number || ''}`} width="max-w-2xl">
+      <Modal open={!!editInvoice} onClose={() => { setEditInvoice(null); setEditMode(false) }} title={`Invoice ${editInvoice?.number || ''}`} width="max-w-2xl">
         {editInvoice && (
           <div className="p-6 space-y-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -281,14 +289,18 @@ export default function InvoicesModule() {
                 </Badge>
               </div>
               <div>
-                <div className="text-xs font-medium text-gray-500 mb-1">Issue Date</div>
-                <div className="text-gray-900">{fmtDate(editInvoice.issueDate)}</div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Client</div>
+                {editMode
+                  ? <Input value={editInvoice.client || ''} onChange={e => setEditInvoice(prev => prev ? { ...prev, client: e.target.value } : null)} placeholder="Client name" />
+                  : <div className="text-gray-900 font-medium">{editInvoice.client || '—'}</div>
+                }
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500 mb-1">Due Date</div>
-                <div className={isOverdue(editInvoice.dueDate) && editInvoice.status !== 'PAID' ? 'text-red-600 font-medium' : 'text-gray-900'}>
-                  {fmtDate(editInvoice.dueDate)}
-                </div>
+                {editMode
+                  ? <Input type="date" value={editInvoice.dueDate ? editInvoice.dueDate.split('T')[0] : ''} onChange={e => setEditInvoice(prev => prev ? { ...prev, dueDate: e.target.value } : null)} />
+                  : <div className={isOverdue(editInvoice.dueDate) && editInvoice.status !== 'PAID' ? 'text-red-600 font-medium' : 'text-gray-900'}>{fmtDate(editInvoice.dueDate)}</div>
+                }
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500 mb-1">Total</div>
@@ -296,24 +308,30 @@ export default function InvoicesModule() {
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500 mb-1">Balance Due</div>
-                <div className={`font-bold ${editInvoice.amountDue > 0 ? 'text-red-600' : 'text-[#00a855]'}`}>
-                  {fmt(editInvoice.amountDue)}
-                </div>
+                <div className={`font-bold ${editInvoice.amountDue > 0 ? 'text-red-600' : 'text-[#00a855]'}`}>{fmt(editInvoice.amountDue)}</div>
               </div>
             </div>
             <div className="flex gap-2 pt-2 flex-wrap">
-              <Button variant="secondary" className="flex-1" icon={Download} onClick={() => handleViewPDF(editInvoice)}>
-                View PDF
-              </Button>
-              {editInvoice.status !== 'PAID' && editInvoice.status !== 'VOID' && (
-                <Button variant="primary" className="flex-1" icon={ExternalLink} onClick={() => handleGetPaymentLink(editInvoice)} disabled={gettingPaymentLink}>
-                  {gettingPaymentLink ? 'Getting link...' : 'Payment Link'}
-                </Button>
+              {!editMode ? (
+                <>
+                  <Button variant="secondary" className="flex-1" onClick={() => setEditMode(true)}>Edit Invoice</Button>
+                  <Button variant="secondary" className="flex-1" icon={Download} onClick={() => handleViewPDF(editInvoice)}>View PDF</Button>
+                  {editInvoice.status !== 'PAID' && editInvoice.status !== 'VOID' && (
+                    <Button variant="primary" className="flex-1" icon={ExternalLink} onClick={() => handleGetPaymentLink(editInvoice)} disabled={gettingPaymentLink}>
+                      {gettingPaymentLink ? 'Getting link...' : 'Payment Link'}
+                    </Button>
+                  )}
+                  {editInvoice.status !== 'PAID' && editInvoice.status !== 'VOID' && (
+                    <Button variant="success" className="flex-1" icon={CheckCircle} onClick={() => handleMarkPaid(editInvoice)}>Mark Paid</Button>
+                  )}
+                  <Button variant="secondary" onClick={() => setEditInvoice(null)}>Close</Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="success" className="flex-1" onClick={handleSaveEdit} disabled={submitting}>{submitting ? 'Saving...' : 'Save Changes'}</Button>
+                  <Button variant="secondary" className="flex-1" onClick={() => setEditMode(false)}>Cancel</Button>
+                </>
               )}
-              {editInvoice.status !== 'PAID' && editInvoice.status !== 'VOID' && (
-                <Button variant="success" className="flex-1" icon={CheckCircle} onClick={() => handleMarkPaid(editInvoice)}>Mark as Paid</Button>
-              )}
-              <Button variant="secondary" onClick={() => setEditInvoice(null)}>Close</Button>
             </div>
           </div>
         )}
@@ -345,25 +363,17 @@ export default function InvoicesModule() {
                   <div className="col-span-6"><Input placeholder="Service description" value={item.description} onChange={setLineField(i, 'description')} /></div>
                   <div className="col-span-2"><Input type="number" value={item.qty} onChange={setLineField(i, 'qty')} /></div>
                   <div className="col-span-2"><Input type="number" placeholder="0.00" value={item.rate} onChange={setLineField(i, 'rate')} /></div>
-                  <div className="col-span-2 flex items-center justify-center text-sm font-semibold text-gray-700">
-                    ${lineTotal(item).toFixed(2)}
-                  </div>
+                  <div className="col-span-2 flex items-center justify-center text-sm font-semibold text-gray-700">${lineTotal(item).toFixed(2)}</div>
                 </div>
               ))}
             </div>
             <Button size="xs" variant="ghost" className="mt-2" onClick={addLineItem}>+ Add line item</Button>
           </div>
-          <div className="flex justify-end text-sm font-bold text-gray-800 pr-1">
-            Total: ${invoiceTotal.toFixed(2)}
-          </div>
+          <div className="flex justify-end text-sm font-bold text-gray-800 pr-1">Total: ${invoiceTotal.toFixed(2)}</div>
           <Input label="Notes / payment terms" placeholder="Payment due within 30 days" value={form.notes} onChange={setField('notes')} />
           <div className="flex gap-2 pt-2">
-            <Button variant="secondary" className="flex-1" onClick={() => handleSubmit(false)} disabled={submitting}>
-              {submitting ? 'Saving…' : 'Save as Draft'}
-            </Button>
-            <Button variant="success" className="flex-1" icon={Send} onClick={() => handleSubmit(true)} disabled={submitting}>
-              {submitting ? 'Sending…' : 'Save & Send'}
-            </Button>
+            <Button variant="secondary" className="flex-1" onClick={() => handleSubmit(false)} disabled={submitting}>{submitting ? 'Saving…' : 'Save as Draft'}</Button>
+            <Button variant="success" className="flex-1" icon={Send} onClick={() => handleSubmit(true)} disabled={submitting}>{submitting ? 'Sending…' : 'Save & Send'}</Button>
           </div>
         </div>
       </Modal>
