@@ -13,7 +13,7 @@ export async function GET() {
 
       // Weekly content reminder on Mondays
       if (dayOfWeek === 1) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'content_reminder',
@@ -44,7 +44,7 @@ export async function GET() {
 
         const spend = Math.abs(Number(monthlyAdSpend._sum.amount) || 0)
 
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'marketing_budget',
@@ -78,7 +78,7 @@ export async function GET() {
       const todayRevenue = Math.abs(Number(yesterdayRevenue._sum.amount) || 0)
 
       if (avgDailyRevenue > 0 && todayRevenue < avgDailyRevenue * 0.5) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'revenue_alert',

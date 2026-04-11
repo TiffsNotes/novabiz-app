@@ -1508,5 +1508,6 @@ model AgentAlert {
 
   @@index([businessId, dismissed])
   @@index([businessId, module])
+  @@unique([businessId, type, dismissed])
   @@map("agent_alerts")
 }

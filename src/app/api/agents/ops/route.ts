@@ -22,7 +22,7 @@ export async function GET() {
       }).catch(() => [])
 
       for (const leave of pendingLeave) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'leave_approval',
@@ -48,7 +48,7 @@ export async function GET() {
       }).catch(() => [])
 
       for (const project of overdueProjects) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'overdue_project',
@@ -75,7 +75,7 @@ export async function GET() {
       ])
 
       if (newThisWeek > 0) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'headcount_update',

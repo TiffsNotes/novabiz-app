@@ -72,7 +72,7 @@ export async function GET() {
         })
 
         for (const anomaly of anomalies) {
-          await db.agentAlert.create({
+          const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
             data: {
               businessId: business.id,
               type: 'anomaly',

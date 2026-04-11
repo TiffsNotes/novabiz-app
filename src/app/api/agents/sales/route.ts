@@ -22,7 +22,7 @@ export async function GET() {
       })
 
       for (const deal of staleDeals) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'follow_up',
@@ -50,7 +50,7 @@ export async function GET() {
       })
 
       for (const deal of closingSoon) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'closing_soon',

@@ -20,7 +20,7 @@ export async function GET() {
       }).catch(() => [])
 
       for (const item of lowStockItems) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'reorder',
@@ -46,7 +46,7 @@ export async function GET() {
       }).catch(() => [])
 
       for (const item of outOfStock) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'out_of_stock',
@@ -72,7 +72,7 @@ export async function GET() {
       }).catch(() => [])
 
       for (const order of overdueOrders) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'overdue_fulfillment',

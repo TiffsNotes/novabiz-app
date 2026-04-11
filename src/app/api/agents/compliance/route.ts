@@ -26,7 +26,7 @@ export async function GET() {
         )
 
         if (daysUntil >= 0 && daysUntil <= 30) {
-          await db.agentAlert.create({
+          const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
             data: {
               businessId: business.id,
               type: 'tax_deadline',
@@ -44,7 +44,7 @@ export async function GET() {
 
       // Monthly payroll tax deposit reminder
       if (day === 10 || day === 15) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'payroll_tax',
@@ -61,7 +61,7 @@ export async function GET() {
 
       // Annual filing reminders
       if (month === 1 && day <= 31) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'annual_filing',
@@ -77,7 +77,7 @@ export async function GET() {
       }
 
       if (month === 3 && day <= 15) {
-        await db.agentAlert.create({
+        const _existing = await db.agentAlert.findFirst({ where: { businessId: business.id, type: "dedup", dismissed: false } }).catch(() => null); await db.agentAlert.create({
           data: {
             businessId: business.id,
             type: 'annual_filing',
