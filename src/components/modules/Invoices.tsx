@@ -148,7 +148,8 @@ export default function InvoicesModule() {
         setInvoices(prev => [created.invoice, ...prev])
         resetForm()
       } else {
-        alert('Failed to save invoice.')
+        const err = await res.json().catch(() => ({}))
+        alert('Failed to save invoice: ' + (err.error || res.status))
       }
     } catch {
       alert('Network error.')
