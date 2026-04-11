@@ -1,291 +1,182 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import {
-  CheckCircle, XCircle, ChevronRight, Clock, AlertTriangle,
-  DollarSign, Zap, BookOpen, Users, Package, TrendingUp,
-  Megaphone, UserCheck, Filter, RefreshCw
-} from 'lucide-react'
+import { CheckCircle, XCircle, AlertTriangle, Bell, RefreshCw, BookOpen, Users, Package, TrendingUp, Megaphone, UserCheck, DollarSign, Zap, Shield } from 'lucide-react'
 
-const MODULE_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  AUTOBOOKS:     { label: 'AutoBooks',     icon: BookOpen,   color: '#2563eb' },
-  PAYROLL:       { label: 'PayrollAI',     icon: UserCheck,  color: '#059669' },
-  GROWTH:        { label: 'GrowthEngine',  icon: Megaphone,  color: '#d97706' },
-  SALES:         { label: 'SalesFlow',     icon: TrendingUp, color: '#7c3aed' },
-  SUPPLY_CHAIN:  { label: 'SupplyChainAI', icon: Package,    color: '#0891b2' },
-  CASH_ORACLE:   { label: 'CashOracle',    icon: DollarSign, color: '#00a855' },
-  COMPLIANCE:    { label: 'ComplianceGuard',icon: Zap,       color: '#dc2626' },
-  CRM:           { label: 'CRM',           icon: Users,      color: '#7c3aed' },
-  HR:            { label: 'HR',            icon: Users,      color: '#059669' },
+const MODULE_ICONS: Record<string, any> = {
+  autobooks: { icon: BookOpen, color: '#2563eb', label: 'AutoBooks' },
+  payroll: { icon: UserCheck, color: '#059669', label: 'PayrollAI' },
+  marketing: { icon: Megaphone, color: '#d97706', label: 'GrowthEngine' },
+  crm: { icon: TrendingUp, color: '#7c3aed', label: 'SalesFlow' },
+  inventory: { icon: Package, color: '#0891b2', label: 'SupplyChain' },
+  orders: { icon: Package, color: '#0891b2', label: 'Orders' },
+  forecast: { icon: DollarSign, color: '#00a855', label: 'CashOracle' },
+  invoices: { icon: DollarSign, color: '#00a855', label: 'Finance' },
+  compliance: { icon: Shield, color: '#dc2626', label: 'Compliance' },
+  hr: { icon: Users, color: '#059669', label: 'HR' },
+  projects: { icon: Zap, color: '#7c3aed', label: 'Projects' },
 }
 
-const URGENCY_META = {
-  LOW:      { label: 'Low',      color: '#6b7280', bg: '#f9fafb' },
-  NORMAL:   { label: 'Normal',   color: '#2563eb', bg: '#eff6ff' },
-  HIGH:     { label: 'High',     color: '#d97706', bg: '#fffbeb' },
-  CRITICAL: { label: 'Critical', color: '#dc2626', bg: '#fef2f2' },
+const SEVERITY_STYLES: Record<string, { bg: string; border: string; text: string; dot: string }> = {
+  critical: { bg: '#FEF2F2', border: '#FECACA', text: '#DC2626', dot: '#DC2626' },
+  warning: { bg: '#FFFBEB', border: '#FDE68A', text: '#D97706', dot: '#D97706' },
+  info: { bg: '#EFF6FF', border: '#BFDBFE', text: '#2563EB', dot: '#2563EB' },
 }
 
-interface InboxItem {
+interface AgentAlert {
   id: string
+  type: string
   title: string
-  description?: string
+  description: string
+  severity: string
   module: string
-  urgency: 'LOW' | 'NORMAL' | 'HIGH' | 'CRITICAL'
-  amount?: number
-  dueAt?: string
+  actionRequired: boolean
+  dismissed: boolean
+  data: any
   createdAt: string
-  action: {
-    actionType: string
-    payload: Record<string, unknown>
-    aiReasoning?: string
-    confidence?: number
-  }
 }
 
-const fmt = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(cents / 100)
-const timeAgo = (date: string) => {
+function timeAgo(date: string) {
   const diff = Date.now() - new Date(date).getTime()
   const mins = Math.floor(diff / 60000)
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 60) return mins + 'm ago'
   const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
+  if (hrs < 24) return hrs + 'h ago'
+  return Math.floor(hrs / 24) + 'd ago'
 }
 
 export default function CommandInboxPage() {
-  const [items, setItems] = useState<InboxItem[]>([])
+  const [items, setItems] = useState<AgentAlert[]>([])
   const [loading, setLoading] = useState(true)
-  const [selected, setSelected] = useState<InboxItem | null>(null)
-  const [filter, setFilter] = useState<string>('all')
-  const [processing, setProcessing] = useState<string | null>(null)
+  const [filter, setFilter] = useState('all')
+  const [counts, setCounts] = useState({ total: 0, critical: 0, warning: 0, info: 0, actionRequired: 0 })
 
-  const load = async () => {
-    const res = await fetch('/api/inbox')
-    if (res.ok) {
+  async function load() {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/inbox')
       const data = await res.json()
-      setItems(data.items)
+      setItems(data.items || [])
+      setCounts(data.counts || {})
+    } catch (e) {
+      console.error('Failed to load inbox:', e)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   useEffect(() => { load() }, [])
 
-  const resolve = async (itemId: string, action: 'approve' | 'reject', reason?: string) => {
-    setProcessing(itemId)
+  async function dismiss(id: string) {
     await fetch('/api/inbox', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, itemId, reason }),
+      body: JSON.stringify({ action: 'dismiss', itemId: id }),
     })
-    setItems(prev => prev.filter(i => i.id !== itemId))
-    if (selected?.id === itemId) setSelected(null)
-    setProcessing(null)
+    setItems(prev => prev.filter(i => i.id !== id))
   }
 
-  const filtered = filter === 'all' ? items : items.filter(i => i.module === filter)
-  const modules = [...new Set(items.map(i => i.module))]
+  async function clearAll() {
+    await fetch('/api/inbox', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'clear_all' }),
+    })
+    load()
+  }
+
+  const filtered = filter === 'all' ? items
+    : filter === 'action' ? items.filter(i => i.actionRequired)
+    : items.filter(i => i.severity === filter)
 
   return (
-    <div className="flex h-full">
-      {/* Left panel */}
-      <div className="w-[400px] border-r border-black/[0.07] flex flex-col bg-white">
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-black/[0.07]">
-          <div className="flex items-center justify-between mb-3">
-            <h1 className="text-lg font-black text-gray-900" style={{ fontFamily: 'Cabinet Grotesk, sans-serif', letterSpacing: '-0.02em' }}>
-              CommandInbox
-            </h1>
-            <div className="flex items-center gap-1.5">
-              {items.length > 0 && (
-                <span className="bg-[#00a855] text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                  {items.length}
-                </span>
-              )}
-              <button onClick={load} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-50">
-                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              </button>
-            </div>
+    <div style={{ padding: '28px 32px', fontFamily: 'system-ui, sans-serif', maxWidth: 900 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Bell size={20} color="#111" />
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111', margin: 0 }}>CommandInbox</h1>
+            {counts.total > 0 && (
+              <span style={{ background: '#DC2626', color: 'white', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10 }}>
+                {counts.total}
+              </span>
+            )}
           </div>
-          <p className="text-xs text-gray-400">Actions that need your approval before NovaBiz executes them.</p>
-
-          {/* Module filters */}
-          <div className="flex gap-1.5 mt-3 flex-wrap">
-            <button
-              onClick={() => setFilter('all')}
-              className={`text-xs px-2.5 py-1 rounded-full transition-colors ${filter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-            >
-              All ({items.length})
-            </button>
-            {modules.map(m => {
-              const meta = MODULE_META[m]
-              return (
-                <button
-                  key={m}
-                  onClick={() => setFilter(m)}
-                  className={`text-xs px-2.5 py-1 rounded-full transition-colors ${filter === m ? 'text-white' : 'text-gray-600 hover:bg-gray-200'}`}
-                  style={filter === m ? { background: meta?.color } : { background: '#f3f4f6' }}
-                >
-                  {meta?.label}
-                </button>
-              )
-            })}
-          </div>
+          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
+            All decisions from your AI executives — approve or dismiss in one place
+          </p>
         </div>
-
-        {/* Items */}
-        <div className="flex-1 overflow-y-auto divide-y divide-black/[0.04]">
-          {loading ? (
-            [...Array(5)].map((_, i) => (
-              <div key={i} className="p-4 animate-pulse">
-                <div className="h-4 bg-gray-100 rounded w-3/4 mb-2" />
-                <div className="h-3 bg-gray-50 rounded w-1/2" />
-              </div>
-            ))
-          ) : filtered.length === 0 ? (
-            <div className="p-12 text-center">
-              <CheckCircle size={32} className="text-[#00a855] mx-auto mb-3" />
-              <div className="font-semibold text-gray-700">All caught up!</div>
-              <p className="text-gray-400 text-sm mt-1">No pending approvals</p>
-            </div>
-          ) : (
-            filtered.map(item => {
-              const meta = MODULE_META[item.module]
-              const urgMeta = URGENCY_META[item.urgency]
-              const isSelected = selected?.id === item.id
-
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => setSelected(item)}
-                  className={`p-4 cursor-pointer transition-colors ${isSelected ? 'bg-gray-50' : 'hover:bg-gray-50/60'}`}
-                >
-                  <div className="flex items-start gap-3">
-                    {meta && (
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: meta.color + '15' }}>
-                        <meta.icon size={13} style={{ color: meta.color }} />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs font-semibold" style={{ color: meta?.color }}>{meta?.label}</span>
-                        <span className="text-xs px-1.5 py-0.5 rounded-md font-medium" style={{ color: urgMeta.color, background: urgMeta.bg }}>
-                          {urgMeta.label}
-                        </span>
-                        {item.dueAt && new Date(item.dueAt) < new Date() && (
-                          <AlertTriangle size={11} className="text-red-500" />
-                        )}
-                      </div>
-                      <div className="text-sm font-medium text-gray-800 truncate">{item.title}</div>
-                      {item.description && (
-                        <div className="text-xs text-gray-500 truncate mt-0.5">{item.description}</div>
-                      )}
-                      <div className="flex items-center gap-2 mt-1.5">
-                        {item.amount && (
-                          <span className="text-xs font-semibold text-gray-700">{fmt(item.amount)}</span>
-                        )}
-                        <span className="text-xs text-gray-400">{timeAgo(item.createdAt)}</span>
-                      </div>
-                    </div>
-                    <ChevronRight size={14} className="text-gray-300 flex-shrink-0 mt-1" />
-                  </div>
-                </div>
-              )
-            })
-          )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={load} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#374151' }}>
+            <RefreshCw size={13} /> Refresh
+          </button>
+          <button onClick={clearAll} style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', fontSize: 13, color: '#374151' }}>
+            Clear Info
+          </button>
         </div>
       </div>
 
-      {/* Right panel - item detail */}
-      {selected ? (
-        <div className="flex-1 p-6 overflow-y-auto">
-          <div className="max-w-2xl">
-            {/* Module badge */}
-            {MODULE_META[selected.module] && (
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: MODULE_META[selected.module].color + '15' }}>
-                  {(() => { const Icon = MODULE_META[selected.module].icon; return <Icon size={16} style={{ color: MODULE_META[selected.module].color }} /> })()}
-                </div>
-                <span className="font-semibold text-sm" style={{ color: MODULE_META[selected.module].color }}>
-                  {MODULE_META[selected.module].label}
-                </span>
-                <span className="text-gray-400 text-xs">{timeAgo(selected.createdAt)}</span>
-              </div>
-            )}
+      {/* Stats */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+        {[
+          { label: 'Action Required', value: counts.actionRequired, color: '#DC2626', bg: '#FEF2F2', filter: 'action' },
+          { label: 'Critical', value: counts.critical, color: '#DC2626', bg: '#FEF2F2', filter: 'critical' },
+          { label: 'Warnings', value: counts.warning, color: '#D97706', bg: '#FFFBEB', filter: 'warning' },
+          { label: 'Info', value: counts.info, color: '#2563EB', bg: '#EFF6FF', filter: 'info' },
+        ].map(stat => (
+          <button key={stat.filter} onClick={() => setFilter(filter === stat.filter ? 'all' : stat.filter)} style={{ flex: 1, padding: '12px', borderRadius: 10, border: '1px solid #e5e7eb', background: filter === stat.filter ? stat.bg : 'white', cursor: 'pointer', textAlign: 'left' }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: stat.color }}>{stat.value}</div>
+            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>{stat.label}</div>
+          </button>
+        ))}
+      </div>
 
-            <h2 className="text-xl font-black text-gray-900 mb-2" style={{ fontFamily: 'Cabinet Grotesk, sans-serif', letterSpacing: '-0.02em' }}>
-              {selected.title}
-            </h2>
-
-            {selected.description && (
-              <p className="text-gray-600 text-sm leading-relaxed mb-4">{selected.description}</p>
-            )}
-
-            {/* Amount */}
-            {selected.amount && (
-              <div className="bg-gray-50 border border-black/[0.07] rounded-xl p-4 mb-4">
-                <div className="text-xs text-gray-400 mb-1 uppercase tracking-wider">Amount</div>
-                <div className="text-2xl font-black text-gray-900" style={{ fontFamily: 'Cabinet Grotesk, sans-serif' }}>
-                  {fmt(selected.amount)}
-                </div>
-              </div>
-            )}
-
-            {/* AI Reasoning */}
-            {selected.action.aiReasoning && (
-              <div className="bg-[#f0fdf4] border border-[#00a855]/20 rounded-xl p-4 mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-5 h-5 rounded bg-[#00a855] flex items-center justify-center">
-                    <span className="text-white text-[10px] font-bold">N</span>
-                  </div>
-                  <span className="text-xs font-semibold text-[#007a3d]">AI Reasoning</span>
-                  {selected.action.confidence && (
-                    <span className="text-xs text-[#007a3d] ml-auto">{Math.round(selected.action.confidence * 100)}% confidence</span>
-                  )}
-                </div>
-                <p className="text-sm text-[#007a3d] leading-relaxed">{selected.action.aiReasoning}</p>
-              </div>
-            )}
-
-            {/* Payload */}
-            <div className="bg-gray-50 border border-black/[0.07] rounded-xl p-4 mb-6">
-              <div className="text-xs text-gray-400 mb-2 uppercase tracking-wider">Action details</div>
-              <div className="text-xs font-mono text-gray-600 overflow-auto">
-                <pre>{JSON.stringify(selected.action.payload, null, 2)}</pre>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => resolve(selected.id, 'approve')}
-                disabled={processing === selected.id}
-                className="flex-1 flex items-center justify-center gap-2 bg-[#00a855] text-white py-3 rounded-xl font-semibold transition-all hover:bg-[#009949] disabled:opacity-50"
-              >
-                <CheckCircle size={16} />
-                {processing === selected.id ? 'Approving...' : 'Approve'}
-              </button>
-              <button
-                onClick={() => resolve(selected.id, 'reject')}
-                disabled={processing === selected.id}
-                className="flex-1 flex items-center justify-center gap-2 bg-white text-red-600 border border-red-200 py-3 rounded-xl font-semibold hover:bg-red-50 disabled:opacity-50"
-              >
-                <XCircle size={16} />
-                Reject
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 text-center mt-3">
-              This action will be logged with your decision for the full audit trail.
-            </p>
-          </div>
+      {/* Items */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Loading...</div>
+      ) : filtered.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>
+          <CheckCircle size={40} color="#D1FAE5" style={{ margin: '0 auto 12px' }} />
+          <div style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 4 }}>All clear!</div>
+          <div style={{ fontSize: 13 }}>No pending items. Your AI executives are on top of things.</div>
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center text-center p-12">
-          <div>
-            <CheckSquare size={40} className="text-gray-200 mx-auto mb-4" />
-            <div className="text-gray-400 font-medium">Select an item to review</div>
-            <p className="text-gray-300 text-sm mt-1">Click any pending action to see details and approve or reject</p>
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {filtered.map(item => {
+            const severity = SEVERITY_STYLES[item.severity] || SEVERITY_STYLES.info
+            const moduleInfo = MODULE_ICONS[item.module] || { icon: Bell, color: '#6b7280', label: item.module }
+            const ModuleIcon = moduleInfo.icon
+
+            return (
+              <div key={item.id} style={{ background: 'white', border: '1px solid #e5e7eb', borderLeft: '4px solid ' + severity.dot, borderRadius: 10, padding: '16px 20px', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: severity.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <AlertTriangle size={16} color={severity.text} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#111' }}>{item.title}</span>
+                    {item.actionRequired && (
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: severity.bg, color: severity.text }}>
+                        ACTION REQUIRED
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 13, color: '#6b7280', margin: 0, lineHeight: 1.5 }}>{item.description}</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <ModuleIcon size={11} color={moduleInfo.color} />
+                      <span style={{ fontSize: 11, color: moduleInfo.color, fontWeight: 500 }}>{moduleInfo.label}</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{timeAgo(item.createdAt)}</span>
+                  </div>
+                </div>
+                <button onClick={() => dismiss(item.id)} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', fontSize: 12, color: '#6b7280', flexShrink: 0 }}>
+                  Dismiss
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
