@@ -187,4 +187,186 @@ export default function InvoicesModule() {
       <div className="flex-1 overflow-auto p-4">
         {tab === 'ar' && (
           <Card padding={false}>
-            <Table<I
+            <Table<Invoice>
+              onRowClick={(row) => setEditInvoice(row)}
+              columns={[
+                { key: 'number', header: 'Invoice #', render: r => <span className="font-mono text-sm font-medium text-gray-700">{r.number}</span> },
+                { key: 'client', header: 'Client', render: r => <span className="font-medium text-gray-900">{r.client || '—'}</span> },
+                { key: 'amount', header: 'Amount', render: r => <span className="font-semibold tabular-nums">{fmt(r.amount)}</span> },
+                { key: 'amountDue', header: 'Balance Due', render: r => (
+                  <span className={`font-bold tabular-nums ${r.amountDue > 0 ? 'text-red-600' : 'text-[#00a855]'}`}>
+                    {fmt(r.amountDue)}
+                  </span>
+                )},
+                { key: 'issueDate', header: 'Issued', render: r => <span className="text-sm text-gray-500">{fmtDate(r.issueDate)}</span> },
+                { key: 'dueDate', header: 'Due', render: r => (
+                  <span className={`text-sm ${isOverdue(r.dueDate) && r.status !== 'PAID' ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+                    {fmtDate(r.dueDate)}
+                    {isOverdue(r.dueDate) && r.status !== 'PAID' && ' ⚠'}
+                  </span>
+                )},
+                { key: 'status', header: 'Status', render: r => (
+                  <Badge variant={r.status === 'PAID' ? 'green' : r.status === 'OVERDUE' ? 'red' : r.status === 'SENT' ? 'blue' : r.status === 'PARTIAL' ? 'yellow' : 'gray'}>
+                    {r.status.toLowerCase()}
+                  </Badge>
+                )},
+              ]}
+              data={invoices}
+              emptyMessage="No invoices yet. Create your first invoice to start tracking payments."
+            />
+          </Card>
+        )}
+
+        {tab === 'ap' && (
+          <Card padding={false}>
+            <Table<Bill>
+              columns={[
+                { key: 'number', header: 'Bill #', render: r => <span className="font-mono text-sm">{r.number}</span> },
+                { key: 'vendor', header: 'Vendor', render: r => <span className="font-medium text-gray-900">{r.vendor}</span> },
+                { key: 'amount', header: 'Amount', render: r => <span className="font-semibold tabular-nums">{fmt(r.amount)}</span> },
+                { key: 'amountPaid', header: 'Paid', render: r => <span className="tabular-nums text-gray-600">{fmt(r.amountPaid)}</span> },
+                { key: 'billDate', header: 'Date', render: r => <span className="text-sm text-gray-500">{fmtDate(r.billDate)}</span> },
+                { key: 'dueDate', header: 'Due', render: r => (
+                  <span className={`text-sm ${isOverdue(r.dueDate) && r.status !== 'paid' ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+                    {fmtDate(r.dueDate)}
+                  </span>
+                )},
+                { key: 'status', header: 'Status', render: r => (
+                  <Badge variant={r.status === 'paid' ? 'green' : r.status === 'approved' ? 'blue' : 'gray'}>{r.status}</Badge>
+                )},
+              ]}
+              data={bills}
+              emptyMessage="No bills yet."
+            />
+          </Card>
+        )}
+
+        {tab === 'aging' && (
+          <Card>
+            <h3 className="font-bold text-gray-900 mb-4" style={{ fontFamily: 'Cabinet Grotesk, sans-serif' }}>AR Aging Summary</h3>
+            <div className="grid grid-cols-5 gap-3 mb-6">
+              {[
+                { label: 'Current', days: '0 days', color: '#00a855', value: invoices.filter(i => !isOverdue(i.dueDate) && i.status !== 'PAID').reduce((s, i) => s + i.amountDue, 0) },
+                { label: '1–30 days', days: 'overdue', color: '#d97706', value: overdueInvoices.filter(i => { const d = new Date(i.dueDate || ''); return Math.floor((Date.now() - d.getTime()) / 86400000) <= 30 }).reduce((s, i) => s + i.amountDue, 0) },
+                { label: '31–60 days', days: 'overdue', color: '#ef4444', value: overdueInvoices.filter(i => { const d = new Date(i.dueDate || ''); const age = Math.floor((Date.now() - d.getTime()) / 86400000); return age > 30 && age <= 60 }).reduce((s, i) => s + i.amountDue, 0) },
+                { label: '61–90 days', days: 'overdue', color: '#dc2626', value: overdueInvoices.filter(i => { const d = new Date(i.dueDate || ''); const age = Math.floor((Date.now() - d.getTime()) / 86400000); return age > 60 && age <= 90 }).reduce((s, i) => s + i.amountDue, 0) },
+                { label: '90+ days', days: 'overdue', color: '#991b1b', value: overdueInvoices.filter(i => { const d = new Date(i.dueDate || ''); return Math.floor((Date.now() - d.getTime()) / 86400000) > 90 }).reduce((s, i) => s + i.amountDue, 0) },
+              ].map(bucket => (
+                <div key={bucket.label} className="text-center p-4 rounded-xl bg-gray-50 border border-black/[0.07]">
+                  <div className="text-xs text-gray-400 mb-1">{bucket.label}</div>
+                  <div className="text-xs text-gray-400 mb-2">{bucket.days}</div>
+                  <div className="font-black text-lg" style={{ color: bucket.value > 0 ? bucket.color : '#9ca3af', fontFamily: 'Cabinet Grotesk, sans-serif' }}>
+                    {fmt(bucket.value)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+      </div>
+
+      {/* Invoice Detail Modal */}
+      <Modal open={!!editInvoice} onClose={() => setEditInvoice(null)} title={`Invoice ${editInvoice?.number || ''}`} width="max-w-2xl">
+        {editInvoice && (
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Invoice Number</div>
+                <div className="font-mono font-semibold text-gray-900">{editInvoice.number}</div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Status</div>
+                <Badge variant={editInvoice.status === 'PAID' ? 'green' : editInvoice.status === 'OVERDUE' ? 'red' : editInvoice.status === 'SENT' ? 'blue' : 'gray'}>
+                  {editInvoice.status.toLowerCase()}
+                </Badge>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Issue Date</div>
+                <div className="text-gray-900">{fmtDate(editInvoice.issueDate)}</div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Due Date</div>
+                <div className={isOverdue(editInvoice.dueDate) && editInvoice.status !== 'PAID' ? 'text-red-600 font-medium' : 'text-gray-900'}>
+                  {fmtDate(editInvoice.dueDate)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Total</div>
+                <div className="font-semibold text-gray-900">{fmt(editInvoice.amount)}</div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Balance Due</div>
+                <div className={`font-bold ${editInvoice.amountDue > 0 ? 'text-red-600' : 'text-[#00a855]'}`}>
+                  {fmt(editInvoice.amountDue)}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2 flex-wrap">
+              <Button variant="secondary" className="flex-1" icon={Download} onClick={() => handleViewPDF(editInvoice)}>
+                View PDF
+              </Button>
+              {editInvoice.status !== 'PAID' && editInvoice.status !== 'VOID' && (
+                <Button variant="primary" className="flex-1" icon={ExternalLink} onClick={() => handleGetPaymentLink(editInvoice)} disabled={gettingPaymentLink}>
+                  {gettingPaymentLink ? 'Getting link...' : 'Payment Link'}
+                </Button>
+              )}
+              {editInvoice.status !== 'PAID' && editInvoice.status !== 'VOID' && (
+                <Button variant="success" className="flex-1" icon={CheckCircle} onClick={() => handleMarkPaid(editInvoice)}>Mark as Paid</Button>
+              )}
+              <Button variant="secondary" onClick={() => setEditInvoice(null)}>Close</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* New Invoice Modal */}
+      <Modal open={newInvoice} onClose={resetForm} title="New Invoice" width="max-w-2xl">
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Client name" placeholder="Acme Corp" value={form.client} onChange={setField('client')} />
+            <Input label="Client email" type="email" placeholder="billing@acme.com" value={form.email} onChange={setField('email')} />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Input label="Invoice #" placeholder="INV-0001" value={form.number} onChange={setField('number')} />
+            <Input label="Issue date" type="date" value={form.issueDate} onChange={setField('issueDate')} />
+            <Input label="Due date" type="date" value={form.dueDate} onChange={setField('dueDate')} />
+          </div>
+          <div>
+            <div className="text-xs font-medium text-gray-500 mb-2">Line Items</div>
+            <div className="space-y-2">
+              <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 px-2">
+                <span className="col-span-6">Description</span>
+                <span className="col-span-2">Qty</span>
+                <span className="col-span-2">Rate</span>
+                <span className="col-span-2">Amount</span>
+              </div>
+              {lineItems.map((item, i) => (
+                <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                  <div className="col-span-6"><Input placeholder="Service description" value={item.description} onChange={setLineField(i, 'description')} /></div>
+                  <div className="col-span-2"><Input type="number" value={item.qty} onChange={setLineField(i, 'qty')} /></div>
+                  <div className="col-span-2"><Input type="number" placeholder="0.00" value={item.rate} onChange={setLineField(i, 'rate')} /></div>
+                  <div className="col-span-2 flex items-center justify-center text-sm font-semibold text-gray-700">
+                    ${lineTotal(item).toFixed(2)}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button size="xs" variant="ghost" className="mt-2" onClick={addLineItem}>+ Add line item</Button>
+          </div>
+          <div className="flex justify-end text-sm font-bold text-gray-800 pr-1">
+            Total: ${invoiceTotal.toFixed(2)}
+          </div>
+          <Input label="Notes / payment terms" placeholder="Payment due within 30 days" value={form.notes} onChange={setField('notes')} />
+          <div className="flex gap-2 pt-2">
+            <Button variant="secondary" className="flex-1" onClick={() => handleSubmit(false)} disabled={submitting}>
+              {submitting ? 'Saving…' : 'Save as Draft'}
+            </Button>
+            <Button variant="success" className="flex-1" icon={Send} onClick={() => handleSubmit(true)} disabled={submitting}>
+              {submitting ? 'Sending…' : 'Save & Send'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  )
+}
