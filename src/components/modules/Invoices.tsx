@@ -55,7 +55,10 @@ export default function InvoicesModule() {
     setEditInvoice(invoice)
     setEditMode(false)
     setCustomFields(invoice.customFields || [])
-    setEditLineItems([{ description: '', qty: '1', rate: '' }])
+    const existing = Array.isArray((invoice as any).lineItems) && (invoice as any).lineItems.length > 0
+      ? (invoice as any).lineItems.map((i: any) => ({ description: i.description || '', qty: String(i.quantity || 1), rate: String((i.unitPrice || 0)) }))
+      : [{ description: '', qty: '1', rate: '' }]
+    setEditLineItems(existing)
   }
 
   const handleViewPDF = (invoice: Invoice) => {
