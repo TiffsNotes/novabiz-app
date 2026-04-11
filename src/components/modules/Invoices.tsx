@@ -56,7 +56,7 @@ export default function InvoicesModule() {
     setEditMode(false)
     setCustomFields(invoice.customFields || [])
     const existing = Array.isArray((invoice as any).lineItems) && (invoice as any).lineItems.length > 0
-      ? (invoice as any).lineItems.map((i: any) => ({ description: i.description || '', qty: String(i.quantity || 1), rate: String((i.unitPrice || 0)) }))
+      ? (invoice as any).lineItems.map((i: any) => ({ description: i.description || '', qty: String(i.quantity || 1), rate: Number(i.unitPrice || 0).toFixed(2) }))
       : [{ description: '', qty: '1', rate: '' }]
     setEditLineItems(existing)
   }
