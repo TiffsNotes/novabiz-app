@@ -104,8 +104,11 @@ export default function InvoicesModule() {
         }),
       })
       if (res.ok) {
-        setInvoices(prev => prev.map(i => i.id === editInvoice.id ? { ...editInvoice, customFields } : i))
+        const updated = { ...editInvoice, customFields }
+        setInvoices(prev => prev.map(i => i.id === editInvoice.id ? updated : i))
+        setEditInvoice(updated)
         setEditMode(false)
+        fetch('/api/finance?view=invoices').then(r => r.json()).then(d => setInvoices(d.invoices || []))
       } else {
         alert('Failed to update invoice.')
       }
