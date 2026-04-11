@@ -12,7 +12,14 @@ export async function GET(req: NextRequest) {
     const view = new URL(req.url).searchParams.get('view') || 'invoices'
     if (view === 'invoices') {
       const invoices = await db.invoice.findMany({ where: { businessId: business.id }, orderBy: { createdAt: 'desc' }, take: 100 })
-      return NextResponse.json({ invoices })
+      const mapped = invoices.map((inv: any) => ({
+        ...inv,
+        client: inv.notes ? inv.notes.split('\n')[0].replace('Customer: ', '').replace(/<.*>/, '').trim() : '',
+        email: inv.notes ? (inv.notes.match(/<(.+)>/) || [])[1] || '' : '',
+        amount: (inv.total || 0) * 100,
+        amountDue: (inv.amountDue || 0) * 100,
+      }))
+      return NextResponse.json({ invoices: mapped })
     }
     if (view === 'bills') {
       const bills = await db.bill.findMany({ where: { businessId: business.id }, orderBy: { createdAt: 'desc' }, take: 100 })
