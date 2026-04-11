@@ -1,9 +1,10 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Plus, Send, CheckCircle, AlertTriangle, Download, ExternalLink } from 'lucide-react'
+import { Plus, Send, CheckCircle, AlertTriangle, Download, ExternalLink, Trash2 } from 'lucide-react'
 import { PageHeader, Card, StatCard, Badge, Table, Tabs, Button, Modal, Input, EmptyState } from '@/components/ui'
 
-type Invoice = { id: string; number: string; client: string; amount: number; amountDue: number; status: string; issueDate: string; dueDate?: string; currency: string }
+type CustomField = { label: string; value: string }
+type Invoice = { id: string; number: string; client: string; email?: string; amount: number; amountDue: number; status: string; issueDate: string; dueDate?: string; currency: string; notes?: string; customFields?: CustomField[] }
 type Bill = { id: string; number: string; vendor: string; amount: number; amountPaid: number; status: string; billDate: string; dueDate?: string }
 type ARStats = { totalAR: number; overdue: number; dueThisWeek: number; paidThisMonth: number }
 type APStats = { totalAP: number; overdue: number; dueThisWeek: number; paidThisMonth: number }
@@ -29,6 +30,8 @@ export default function InvoicesModule() {
   const [newInvoice, setNewInvoice] = useState(false)
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null)
   const [editMode, setEditMode] = useState(false)
+  const [customFields, setCustomFields] = useState<CustomField[]>([])
+  const [editLineItems, setEditLineItems] = useState<LineItem[]>([])
   const [form, setForm] = useState(defaultForm)
   const [lineItems, setLineItems] = useState<LineItem[]>([{ description: '', qty: '1', rate: '' }])
   const [submitting, setSubmitting] = useState(false)
@@ -43,6 +46,13 @@ export default function InvoicesModule() {
   const invoiceTotal = lineItems.reduce((s, item) => s + lineTotal(item), 0)
   const resetForm = () => { setForm(defaultForm); setLineItems([{ description: '', qty: '1', rate: '' }]); setNewInvoice(false) }
 
+  const openEdit = (invoice: Invoice) => {
+    setEditInvoice(invoice)
+    setEditMode(false)
+    setCustomFields(invoice.customFields || [])
+    setEditLineItems([])
+  }
+
   const handleViewPDF = (invoice: Invoice) => {
     window.open('/api/invoices/' + invoice.id + '/pdf', '_blank')
   }
@@ -56,11 +66,8 @@ export default function InvoicesModule() {
         body: JSON.stringify({ invoiceId: invoice.id }),
       })
       const data = await res.json()
-      if (data.url) {
-        window.open(data.url, '_blank')
-      } else {
-        alert('Error: ' + (data.error || 'Could not create payment link'))
-      }
+      if (data.url) window.open(data.url, '_blank')
+      else alert('Error: ' + (data.error || 'Could not create payment link'))
     } catch {
       alert('Network error creating payment link')
     } finally {
@@ -79,12 +86,15 @@ export default function InvoicesModule() {
           action: 'update_invoice',
           id: editInvoice.id,
           customerName: editInvoice.client,
+          customerEmail: editInvoice.email,
           dueDate: editInvoice.dueDate,
+          issueDate: editInvoice.issueDate,
           notes: editInvoice.notes,
+          customFields,
         }),
       })
       if (res.ok) {
-        setInvoices(prev => prev.map(i => i.id === editInvoice.id ? editInvoice : i))
+        setInvoices(prev => prev.map(i => i.id === editInvoice.id ? { ...editInvoice, customFields } : i))
         setEditMode(false)
       } else {
         alert('Failed to update invoice.')
@@ -99,22 +109,21 @@ export default function InvoicesModule() {
   const handleSubmit = async (send: boolean) => {
     setSubmitting(true)
     try {
-      const payload = {
-        action: 'create_invoice',
-        customerName: form.client,
-        customerEmail: form.email,
-        dueDate: form.dueDate,
-        notes: form.notes,
-        lineItems: lineItems.filter(i => i.description || i.rate).map(i => ({
-          description: i.description,
-          quantity: parseFloat(i.qty) || 1,
-          unitPrice: parseFloat(i.rate) || 0,
-        })),
-      }
       const res = await fetch('/api/finance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          action: 'create_invoice',
+          customerName: form.client,
+          customerEmail: form.email,
+          dueDate: form.dueDate,
+          notes: form.notes,
+          lineItems: lineItems.filter(i => i.description || i.rate).map(i => ({
+            description: i.description,
+            quantity: parseFloat(i.qty) || 1,
+            unitPrice: parseFloat(i.rate) || 0,
+          })),
+        }),
       })
       if (res.ok) {
         const created = await res.json()
@@ -203,7 +212,7 @@ export default function InvoicesModule() {
         {tab === 'ar' && (
           <Card padding={false}>
             <Table<Invoice>
-              onRowClick={(row) => { setEditInvoice(row); setEditMode(false) }}
+              onRowClick={(row) => openEdit(row)}
               columns={[
                 { key: 'number', header: 'Invoice #', render: r => <span className="font-mono text-sm font-medium text-gray-700">{r.number}</span> },
                 { key: 'client', header: 'Client', render: r => <span className="font-medium text-gray-900">{r.client || '—'}</span> },
@@ -257,7 +266,7 @@ export default function InvoicesModule() {
             <div className="grid grid-cols-5 gap-3">
               {[
                 { label: 'Current', days: '0 days', color: '#00a855', value: invoices.filter(i => !isOverdue(i.dueDate) && i.status !== 'PAID').reduce((s, i) => s + i.amountDue, 0) },
-                { label: '1–30 days', days: 'overdue', color: '#d97706', value: overdueInvoices.filter(i => { const age = Math.floor((Date.now() - new Date(i.dueDate || '').getTime()) / 86400000); return age <= 30 }).reduce((s, i) => s + i.amountDue, 0) },
+                { label: '1–30 days', days: 'overdue', color: '#d97706', value: overdueInvoices.filter(i => Math.floor((Date.now() - new Date(i.dueDate || '').getTime()) / 86400000) <= 30).reduce((s, i) => s + i.amountDue, 0) },
                 { label: '31–60 days', days: 'overdue', color: '#ef4444', value: overdueInvoices.filter(i => { const age = Math.floor((Date.now() - new Date(i.dueDate || '').getTime()) / 86400000); return age > 30 && age <= 60 }).reduce((s, i) => s + i.amountDue, 0) },
                 { label: '61–90 days', days: 'overdue', color: '#dc2626', value: overdueInvoices.filter(i => { const age = Math.floor((Date.now() - new Date(i.dueDate || '').getTime()) / 86400000); return age > 60 && age <= 90 }).reduce((s, i) => s + i.amountDue, 0) },
                 { label: '90+ days', days: 'overdue', color: '#991b1b', value: overdueInvoices.filter(i => Math.floor((Date.now() - new Date(i.dueDate || '').getTime()) / 86400000) > 90).reduce((s, i) => s + i.amountDue, 0) },
@@ -277,40 +286,75 @@ export default function InvoicesModule() {
       <Modal open={!!editInvoice} onClose={() => { setEditInvoice(null); setEditMode(false) }} title={`Invoice ${editInvoice?.number || ''}`} width="max-w-2xl">
         {editInvoice && (
           <div className="p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="text-xs font-medium text-gray-500 mb-1">Invoice Number</div>
-                <div className="font-mono font-semibold text-gray-900">{editInvoice.number}</div>
+                <div className="font-mono font-semibold text-gray-900 pt-1">{editInvoice.number}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500 mb-1">Status</div>
-                <Badge variant={editInvoice.status === 'PAID' ? 'green' : editInvoice.status === 'OVERDUE' ? 'red' : editInvoice.status === 'SENT' ? 'blue' : 'gray'}>
-                  {editInvoice.status.toLowerCase()}
-                </Badge>
+                <div className="pt-1">
+                  <Badge variant={editInvoice.status === 'PAID' ? 'green' : editInvoice.status === 'OVERDUE' ? 'red' : editInvoice.status === 'SENT' ? 'blue' : 'gray'}>
+                    {editInvoice.status.toLowerCase()}
+                  </Badge>
+                </div>
+              </div>
+              <div className="col-span-2">
+                <Input label="Client Name" value={editInvoice.client || ''} onChange={e => setEditInvoice(prev => prev ? { ...prev, client: e.target.value } : null)} placeholder="Client name" disabled={!editMode} />
+              </div>
+              <div className="col-span-2">
+                <Input label="Client Email" type="email" value={editInvoice.email || ''} onChange={e => setEditInvoice(prev => prev ? { ...prev, email: e.target.value } : null)} placeholder="client@email.com" disabled={!editMode} />
               </div>
               <div>
-                <div className="text-xs font-medium text-gray-500 mb-1">Client</div>
-                {editMode
-                  ? <Input value={editInvoice.client || ''} onChange={e => setEditInvoice(prev => prev ? { ...prev, client: e.target.value } : null)} placeholder="Client name" />
-                  : <div className="text-gray-900 font-medium">{editInvoice.client || '—'}</div>
-                }
+                <Input label="Issue Date" type="date" value={editInvoice.issueDate ? editInvoice.issueDate.split('T')[0] : ''} onChange={e => setEditInvoice(prev => prev ? { ...prev, issueDate: e.target.value } : null)} disabled={!editMode} />
               </div>
               <div>
-                <div className="text-xs font-medium text-gray-500 mb-1">Due Date</div>
-                {editMode
-                  ? <Input type="date" value={editInvoice.dueDate ? editInvoice.dueDate.split('T')[0] : ''} onChange={e => setEditInvoice(prev => prev ? { ...prev, dueDate: e.target.value } : null)} />
-                  : <div className={isOverdue(editInvoice.dueDate) && editInvoice.status !== 'PAID' ? 'text-red-600 font-medium' : 'text-gray-900'}>{fmtDate(editInvoice.dueDate)}</div>
-                }
+                <Input label="Due Date" type="date" value={editInvoice.dueDate ? editInvoice.dueDate.split('T')[0] : ''} onChange={e => setEditInvoice(prev => prev ? { ...prev, dueDate: e.target.value } : null)} disabled={!editMode} />
               </div>
               <div>
-                <div className="text-xs font-medium text-gray-500 mb-1">Total</div>
-                <div className="font-semibold text-gray-900">{fmt(editInvoice.amount)}</div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Total Amount</div>
+                <div className="font-semibold text-gray-900 pt-1">{fmt(editInvoice.amount)}</div>
               </div>
               <div>
                 <div className="text-xs font-medium text-gray-500 mb-1">Balance Due</div>
-                <div className={`font-bold ${editInvoice.amountDue > 0 ? 'text-red-600' : 'text-[#00a855]'}`}>{fmt(editInvoice.amountDue)}</div>
+                <div className={`font-bold pt-1 ${editInvoice.amountDue > 0 ? 'text-red-600' : 'text-[#00a855]'}`}>{fmt(editInvoice.amountDue)}</div>
+              </div>
+              <div className="col-span-2">
+                <Input label="Notes / Payment Terms" value={editInvoice.notes || ''} onChange={e => setEditInvoice(prev => prev ? { ...prev, notes: e.target.value } : null)} placeholder="Payment due within 30 days" disabled={!editMode} />
               </div>
             </div>
+
+            {/* Custom Fields */}
+            {editMode && (
+              <div>
+                <div className="text-xs font-medium text-gray-500 mb-2">Custom Fields</div>
+                <div className="space-y-2">
+                  {customFields.map((field, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <Input placeholder="Field label" value={field.label} onChange={e => setCustomFields(prev => prev.map((f, idx) => idx === i ? { ...f, label: e.target.value } : f))} />
+                      <Input placeholder="Value" value={field.value} onChange={e => setCustomFields(prev => prev.map((f, idx) => idx === i ? { ...f, value: e.target.value } : f))} />
+                      <button onClick={() => setCustomFields(prev => prev.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600 flex-shrink-0">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <Button size="xs" variant="ghost" onClick={() => setCustomFields(prev => [...prev, { label: '', value: '' }])}>+ Add custom field</Button>
+                </div>
+              </div>
+            )}
+
+            {/* Show custom fields in view mode */}
+            {!editMode && customFields.length > 0 && (
+              <div className="grid grid-cols-2 gap-3">
+                {customFields.map((field, i) => (
+                  <div key={i}>
+                    <div className="text-xs font-medium text-gray-500 mb-1">{field.label}</div>
+                    <div className="text-sm text-gray-900">{field.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="flex gap-2 pt-2 flex-wrap">
               {!editMode ? (
                 <>
